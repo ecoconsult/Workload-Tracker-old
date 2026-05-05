@@ -33,14 +33,14 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 /* HEADER */
 .header {
   background:var(--surface); border-bottom:1px solid var(--border);
-  padding:16px 36px; display:flex; align-items:center; justify-content:space-between;
+  padding:12px 24px; display:flex; align-items:center; justify-content:space-between;
   box-shadow:var(--shadow); position:sticky; top:0; z-index:50;
 }
 .header-left { display:flex; align-items:center; gap:14px; }
 .logo { width:34px;height:34px;background:var(--text);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--bg);font-family:'Fraunces',serif;font-size:17px;font-weight:700; }
 .header-title { font-family:'Fraunces',serif;font-size:19px;font-weight:700;letter-spacing:-0.5px; }
 .header-date { font-size:12px;color:var(--muted);margin-top:1px; }
-.header-actions { display:flex;gap:10px;align-items:center; }
+.header-actions { display:flex;gap:6px;align-items:center; }
 
 .btn { font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;padding:8px 15px;border-radius:8px;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text2);transition:all 0.15s;display:inline-flex;align-items:center;gap:6px; }
 .btn:hover { background:var(--surface2); }
@@ -77,14 +77,14 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .nav-btn:hover { background:var(--surface2); }
 
 /* LEGEND */
-.legend { display:flex;gap:16px;align-items:center; }
-.legend-item { display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2); }
+.legend { display:flex;gap:10px;align-items:center;flex-wrap:nowrap; }
+.legend-item { display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);white-space:nowrap; }
 .ldot { width:10px;height:10px;border-radius:3px; }
 
 /* CHIPS */
 .chip { display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;text-transform:uppercase;letter-spacing:0.4px; }
 .chip-green{background:var(--green-bg);color:var(--green)} .chip-yellow{background:var(--yellow-bg);color:var(--yellow)}
-.chip-red{background:var(--red-bg);color:var(--red)} .chip-gray{background:#f0ede9;color:var(--muted)}
+.chip-red{background:var(--red-bg);color:var(--red)} .chip-overloaded{background:#fee2e2;color:#991b1b} .chip-gray{background:#f0ede9;color:var(--muted)}
 .chip-orange{background:#ffd5a8;color:#b84d00;font-weight:700}
 .chip-overloaded{background:#f5c6c6;color:#7b0000;font-weight:700} .chip-blue{background:var(--blue-bg);color:var(--blue)}
 
@@ -117,6 +117,17 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .day-cell { padding:9px 11px;border-right:1px solid var(--border);cursor:pointer;transition:background 0.1s;min-height:80px;display:flex;flex-direction:column;justify-content:flex-start; }
 .day-cell:last-child{border-right:none} .day-cell.today-col{background:#f6fbf8} .day-cell:hover{background:#f0f7f4}
 .day-cell.weekend{background:#f7f5f2;cursor:default;pointer-events:none}
+/* Leave colours */
+.day-cell.on-leave-annual{background:#dbeafe!important;border-left:3px solid #3b82f6}
+.day-cell.on-leave-sick{background:#fce7f3!important;border-left:3px solid #ec4899}
+.day-cell.on-leave-annual .chip,.day-cell.on-leave-sick .chip{display:none}
+.leave-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;display:inline-block;margin-top:2px}
+.leave-badge.annual{background:#bfdbfe;color:#1d4ed8}
+.leave-badge.sick{background:#fbcfe8;color:#be185d}
+/* Monthly calendar leave dots */
+.cal-leave-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin:1px}
+.cal-leave-dot.annual{background:#3b82f6}
+.cal-leave-dot.sick{background:#ec4899}
 .load-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
 .load-pct{font-size:13px;font-weight:700}
 .bar-wrap{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:5px}
@@ -385,6 +396,35 @@ select option{background:#fff}
 .nb-note:hover .nb-note-bar{opacity:1!important}
 .nb-note:focus-within .nb-note-bar{opacity:1!important}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+  // EmailJS — fill in your keys from emailjs.com
+  const EMAILJS_SERVICE_ID  = 'service_c4scafl';
+  const EMAILJS_TEMPLATE_ID = 'template_lbwjcvd';
+  const EMAILJS_PUBLIC_KEY  = '5025uMnqNTMN_O4mm';
+
+  function emailjsReady() {
+    return EMAILJS_SERVICE_ID !== 'YOUR_SERVICE_ID' &&
+           EMAILJS_TEMPLATE_ID !== 'YOUR_TEMPLATE_ID' &&
+           EMAILJS_PUBLIC_KEY  !== 'YOUR_PUBLIC_KEY';
+  }
+
+  async function sendApprovalEmail(toEmail, toName, requesterName, subject, body) {
+    if(!emailjsReady()) return; // keys not configured yet — silent skip
+    try {
+      emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email:       toEmail,
+        to_name:        toName,
+        requester_name: requesterName,
+        subject:        subject,
+        message:        body
+      });
+    } catch(e) {
+      console.warn('EmailJS error:', e);
+    }
+  }
+</script>
 </head>
 <body>
 
@@ -487,12 +527,17 @@ select option{background:#fff}
       <div class="legend-item"><div class="ldot" style="background:#f9d97a"></div> Busy</div>
       <div class="legend-item"><div class="ldot" style="background:#fb923c"></div> Very Busy</div>
       <div class="legend-item"><div class="ldot" style="background:#f5a9a3"></div> Full Capacity</div>
-      <div class="legend-item"><div class="ldot" style="background:#f5a9a3"></div> Overloaded</div>
-      <div class="legend-item"><span class="spike-badge">⚡ Spike</span> Weekly override</div>
+      <div class="legend-item"><div class="ldot" style="background:#e05c5c"></div> Overloaded</div>
+      <div class="legend-item"><span class="spike-badge" style="font-size:10px;padding:1px 5px">⚡ Spike</span> Weekly override</div>
+      <div style="width:1px;height:18px;background:var(--border);margin:0 4px;align-self:center"></div>
+      <div style="display:flex;flex-direction:column;gap:2px;justify-content:center;white-space:nowrap">
+        <div class="legend-item" style="margin:0"><div class="ldot" style="background:#bfdbfe;border:1px solid #3b82f6"></div> Annual Leave</div>
+        <div class="legend-item" style="margin:0"><div class="ldot" style="background:#fbcfe8;border:1px solid #ec4899"></div> Sick Leave</div>
+      </div>
     </div>
-    <button class="btn btn-accent" id="headerFindCapBtn" onclick="switchTab('finder',document.querySelectorAll('.tab')[4])">🔍 Find Capacity</button>
-    <button class="btn btn-primary" id="logThisWeekBtn" onclick="openWeeklyOverrideModal()">⚡ Log This Week</button>
-    <button class="btn" id="headerNewProjBtn" onclick="openAddProjectModal()">+ New Project</button>
+    <button class="btn btn-accent" id="headerFindCapBtn" onclick="switchTab('finder',document.querySelector('[data-view=\'finder\']'))" style="padding:7px 10px;font-size:12px;white-space:nowrap">🔍 Find Capacity</button>
+    <button class="btn btn-primary" id="logThisWeekBtn" onclick="openWeeklyOverrideModal()" style="padding:7px 10px;font-size:12px;white-space:nowrap">⚡ Log This Week</button>
+    <button class="btn" id="headerNewProjBtn" onclick="openAddProjectModal()" style="padding:7px 10px;font-size:12px;white-space:nowrap">+ New Project</button>
     <div style="position:relative">
       <div class="user-pill" onclick="toggleUserMenu()" id="userPill">
         <div class="avatar" id="userAvatar" style="width:26px;height:26px;font-size:10px"></div>
@@ -500,7 +545,8 @@ select option{background:#fff}
         <span style="font-size:10px;color:var(--muted);margin-left:2px">▾</span>
       </div>
       <div id="userMenu" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);min-width:160px;z-index:100;overflow:hidden">
-        <div id="userMenuSettings" onclick="openSettingsModal()" style="padding:11px 16px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background 0.1s" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">⚙️ Settings</div>
+        <div id="userMenuLeave" onclick="document.getElementById('userMenu').style.display='none';openLeaveModal()" style="padding:11px 16px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background 0.1s" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">🏖 Request Leave</div>
+     <div id="userMenuSettings" onclick="openSettingsModal()"  style="padding:11px 16px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background 0.1s" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">⚙️ Settings</div>
         <div style="height:1px;background:var(--border)"></div>
         <div onclick="doLogout()" style="padding:11px 16px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--red);transition:background 0.1s" onmouseenter="this.style.background='var(--red-bg)'" onmouseleave="this.style.background=''">→ Sign Out</div>
       </div>
@@ -512,7 +558,7 @@ select option{background:#fff}
   <div class="tab active" onclick="switchTab('weekly',this)" data-view="weekly">Weekly Grid</div>
   <div class="tab" onclick="switchTab('monthly',this)" data-view="monthly">Monthly Calendar</div>
   <div class="tab" onclick="switchTab('projects',this)" data-view="projects">Projects</div>
-  <div class="tab" onclick="switchTab('finder',this)" data-view="finder">🔍 Capacity Finder</div>
+  <div class="tab" onclick="switchTab('finder',this)" data-view="finder" style="display:none">🔍 Capacity Finder</div>
   <div style="width:1px;background:var(--border);margin:8px 4px;flex-shrink:0"></div>
   <div class="tab" onclick="switchTab('mywork',this)" id="myworkTab" data-view="mywork">My Work <span id="inboxBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:3px"></span></div>
   <div class="tab" onclick="switchTab('notes',this)" data-view="notes">📝 My Notes</div>
@@ -745,21 +791,104 @@ select option{background:#fff}
     </div>
     <!-- HR view -->
     <div id="tsHRView" style="display:none">
-      <div class="section-header">
-        <div>
-          <div class="section-title">🕐 Team Timesheets</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">View and export all team members' timesheets</div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center">
+      <!-- HR Tab Bar -->
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px">
+        <button id="hrTabMonth" onclick="hrSwitchTab('month')" style="padding:8px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid var(--accent);margin-bottom:-2px;color:var(--accent)">Monthly View</button>
+        <button id="hrTabSummary" onclick="hrSwitchTab('summary')" style="padding:8px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--muted)">Multi-Month Summary</button>
+        <button id="hrTabProject" onclick="hrSwitchTab('project')" style="padding:8px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--muted)">Project LOE View</button>
+      </div>
+
+      <!-- Monthly View Panel -->
+      <div id="hrPanelMonth">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
           <select id="hrMonthSel" onchange="loadHRTimesheets()" style="padding:7px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)"></select>
           <button class="btn btn-accent" onclick="exportAllTimesheets(false)" style="font-size:12px">📥 Export All (One File)</button>
-          <button class="btn btn-accent" onclick="exportAllTimesheets(true)" style="font-size:12px">📥 Export Individual</button>
+
+        </div>
+        <div id="tsHRList"></div>
+        <!-- Leave approval for managers -->
+        <div id="leavePendingPanel" style="display:none;margin-top:20px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px">
+          <div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px">⏳ Pending Leave Requests</div>
+          <div id="leavePendingList"></div>
         </div>
       </div>
-      <div id="tsHRList"></div>
+
+      <!-- Multi-Month Summary Panel -->
+      <div id="hrPanelSummary" style="display:none">
+        <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Person</label>
+            <select id="hrSumPerson" style="padding:7px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);min-width:180px"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">From Month</label>
+            <select id="hrSumFrom" style="padding:7px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">To Month</label>
+            <select id="hrSumTo" style="padding:7px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)"></select>
+          </div>
+          <button class="btn btn-primary" onclick="loadHRSummary()" style="font-size:13px">View Summary</button>
+          <button class="btn btn-accent" onclick="exportHRSummary()" style="font-size:13px">📥 Export</button>
+        </div>
+        <div id="hrSummaryResult"></div>
+      </div>
+
+      <!-- Project LOE Panel -->
+      <div id="hrPanelProject" style="display:none">
+        <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Project</label>
+            <select id="hrProjSel" style="padding:7px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);min-width:220px"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">From Month</label>
+            <select id="hrProjFrom" style="padding:7px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">To Month</label>
+            <select id="hrProjTo" style="padding:7px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)"></select>
+          </div>
+          <button class="btn btn-primary" onclick="loadHRProjectLOE()" style="font-size:13px">View LOE</button>
+          <button class="btn btn-accent" onclick="exportHRProjectLOE()" style="font-size:13px">📥 Export</button>
+        </div>
+        <div id="hrProjectResult"></div>
+      </div>
     </div>
   </div>
 </div>
+
+<!-- LEAVE MODAL -->
+<div class="overlay" id="leaveModal">
+  <div class="modal" style="width:440px">
+    <button class="modal-close" onclick="closeModal('leaveModal')">×</button>
+    <h2>Request Leave</h2>
+    <p class="modal-sub">Submit an annual or sick leave request. Once approved, it will appear on the team calendar and workload grid.</p>
+    <label id="leavePersonLabel" style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Team Member</label>
+    <select id="leavePersonSel" style="width:100%;padding:8px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:14px"></select>
+    <div class="two-col">
+      <div class="field"><label>From</label><input type="date" id="leaveStart"></div>
+      <div class="field"><label>To</label><input type="date" id="leaveEnd"></div>
+    </div>
+    <div class="field">
+      <label>Leave Type</label>
+      <select id="leaveType" style="width:100%;padding:8px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
+        <option value="annual">Annual Leave</option>
+        <option value="sick">Sick Leave</option>
+      </select>
+    </div>
+    <div id="myLeavesSection" style="margin-top:16px">
+      <div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Upcoming Leaves</div>
+      <div id="myLeavesList"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('leaveModal')">Close</button>
+      <button class="btn btn-primary" onclick="submitLeave()">Submit Leave</button>
+    </div>
+  </div>
+</div>
+
+
 
 <!-- ADD NOTE CARD MODAL -->
 <div class="overlay" id="addNoteCardModal">
@@ -1046,7 +1175,8 @@ const TITLES = ['Intern','Associate','Senior Associate','Consultant','Senior Con
 const HR_USER = {id:9999, name:'HR', title:'HR', dept:'HR', c:{bg:'#e8f0fc',fg:'#2563b0'}};
 
 function isAdmin()   { return currentUser && currentUser.id === 1; } // Admin = Ibrahim (id 1)
-function isHR()      { return currentUser && currentUser.id === 9999; }
+function isHR()            { return currentUser && currentUser.id === 9999; }
+function isTimesheetOnly() { return currentUser && currentUser.role === 'timesheet_only'; }
 function isPartner()     { return currentUser && currentUser.title === 'E&S Director'; }
 function canEditProject(proj) {
   if(!currentUser) return false;
@@ -1170,11 +1300,17 @@ function getEffectiveLoad(personId, weekKeyStr) {
     const dayOverrides = overrides.filter(o =>
       o.personId === personId && o.start <= dStr && o.end >= dStr
     );
-    if(dayOverrides.length) {
+    // Check leaves for this day
+    const dayLeaves = getLeavesForDay(personId, dStr);
+    if(dayLeaves.length) {
+      const leaveType = dayLeaves[0].type;
+      workDays.push({load:100, isOverride:false, baseline:dayBaseline,
+        reasons:[], projects:dayProjects, onLeave:true, leaveType});
+    } else if(dayOverrides.length) {
       workDays.push({load: Math.max(...dayOverrides.map(o=>o.load)), isOverride:true,
-        baseline:dayBaseline, reasons:dayOverrides.map(o=>o.reason), projects:dayProjects});
+        baseline:dayBaseline, reasons:dayOverrides.map(o=>o.reason), projects:dayProjects, onLeave:false});
     } else {
-      workDays.push({load:dayBaseline, isOverride:false, baseline:dayBaseline, reasons:[], projects:dayProjects});
+      workDays.push({load:dayBaseline, isOverride:false, baseline:dayBaseline, reasons:[], projects:dayProjects, onLeave:false});
     }
   }
 
@@ -1202,7 +1338,7 @@ function getEffectiveLoad(personId, weekKeyStr) {
 
 function updateSummary() {
   const wk = wKey(weekStart(new Date(), weekOffset));
-  const loads = team.map(p=>getEffectiveLoad(p.id, wk).load);
+  const loads = team.filter(p=>p.role!=='timesheet_only').map(p=>getEffectiveLoad(p.id, wk).load);
   const avg = Math.round(loads.reduce((a,b)=>a+b,0)/loads.length);
   document.getElementById('s-avail').textContent  = (100-avg)+'%';
   document.getElementById('s-green').textContent  = loads.filter(l=>l<60).length;
@@ -1227,7 +1363,8 @@ function renderWeekly() {
     }).join('');
 
   const wk = wKey(ws);
-  document.getElementById('weekRows').innerHTML = team.map(p=>{
+  const consultantTeam = team.filter(p => p.role !== 'timesheet_only');
+  document.getElementById('weekRows').innerHTML = consultantTeam.map(p=>{
     const eff = getEffectiveLoad(p.id, wk);
     const isMe = currentUser && currentUser.id === p.id;
     // Hours free this week: 40h total - (avgLoad% * 40h)
@@ -1249,9 +1386,11 @@ function renderWeekly() {
       const isDayOverride = dayData ? dayData.isOverride : false;
       const dayBaseline = dayData ? dayData.baseline : 0;
       const dayReason = dayData ? dayData.reasons.filter(Boolean).join(' · ') : '';
+      const onLeave = dayData && dayData.onLeave;
+      const leaveType = dayData ? dayData.leaveType : null;
       const overBy = dayLoad > 100 ? dayLoad - 100 : 0;
 
-      return `<div class="day-cell${isToday(d)?' today-col':''}${isMe?' clickable-cell':''}"
+      return `<div class="day-cell${onLeave?` on-leave-${leaveType||'annual'}`:isToday(d)?' today-col':''}${isMe?' clickable-cell':''}"
         ${isMe?`onclick="openOverrideForPerson(${p.id},'${wk}')"`:''} style="${isMe?'':'cursor:default'}">
         <div class="load-row">
           <span class="load-pct" style="color:${loadColor(dayLoad)}">${dayLoad}%</span>
@@ -1677,7 +1816,7 @@ function renderFinder() {
   while(cur <= endDate) { weeks.push(wKey(cur)); cur = new Date(cur); cur.setDate(cur.getDate()+7); }
   if(!weeks.length) weeks.push(wKey(new Date(startVal+'T12:00:00')));
 
-  const results = team.map(p => {
+  const results = team.filter(p=>p.role!=='timesheet_only').map(p => {
     const loads = weeks.map(wk => getEffectiveLoad(p.id, wk).load);
     const avgLoad = Math.round(loads.reduce((a,b)=>a+b,0) / loads.length);
     const peakLoad = Math.max(...loads);
@@ -1731,6 +1870,52 @@ function loadPersistedSession() {
   } catch(e) { clearSession(); return false; }
 }
 function persistSession() { try { localStorage.setItem('wt_session', JSON.stringify({userId:currentUser.id})); } catch(e){} }
+function showForceChangePw() {
+  // Show a fullscreen overlay forcing the user to set a new password
+  // before accessing the app. Cannot be dismissed.
+  let overlay = document.getElementById('forcePwOverlay');
+  if(!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'forcePwOverlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = `
+      <div style="background:var(--surface);border-radius:16px;padding:36px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,0.15)">
+        <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:700;margin-bottom:6px;color:var(--text)">Welcome!</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:24px">Please set a personal password before continuing. You'll use this every time you log in.</p>
+        <div style="margin-bottom:14px">
+          <label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">New Password</label>
+          <input type="password" id="forcePwNew" placeholder="At least 4 characters"
+            style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:24px">
+          <label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Confirm Password</label>
+          <input type="password" id="forcePwConfirm" placeholder="Repeat your password"
+            style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);box-sizing:border-box">
+        </div>
+        <button onclick="saveForceChangePw()"
+          style="width:100%;padding:12px;font-size:14px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer">
+          Set Password & Continue
+        </button>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+  overlay.style.display = 'flex';
+  setTimeout(()=>{ const el=document.getElementById('forcePwNew'); if(el) el.focus(); }, 100);
+}
+
+async function saveForceChangePw() {
+  const newPw = (document.getElementById('forcePwNew').value||'').trim();
+  const confirm = (document.getElementById('forcePwConfirm').value||'').trim();
+  if(newPw.length < 4) { showToast('Password must be at least 4 characters'); return; }
+  if(newPw !== confirm) { showToast('Passwords do not match'); return; }
+  const {error} = await sb.from('team').update({password:newPw, must_change_password:false}).eq('id', currentUser.id);
+  if(error) { showToast('Error saving password — please try again'); return; }
+  const overlay = document.getElementById('forcePwOverlay');
+  if(overlay) overlay.style.display = 'none';
+  applyLogin();
+}
+
+
 function clearSession() { try { localStorage.removeItem('wt_session'); } catch(e){} }
 
 function loadPins() {
@@ -1753,7 +1938,7 @@ function populateLoginSelect() {
   const seen = new Set();
   const uniqueUsers = getLoginUsers().filter(p=>{ if(seen.has(p.id)) return false; seen.add(p.id); return true; });
   sel.innerHTML = `<option value="">— Who are you? —</option>` +
-    uniqueUsers.map(p=>`<option value="${p.id}">${p.name}${isAdminUser(p)?' (Admin)':''}</option>`).join('');
+    uniqueUsers.map(p=>`<option value="${p.id}">${p.name}${isAdminUser(p)?' (Admin)':p.role==='timesheet_only'?' (Timesheet)':''}</option>`).join('');
 }
 
 function isAdminUser(p) { return p.id === 1; } // Admin = Ibrahim (id 1)
@@ -1765,23 +1950,36 @@ function showPwField() {
   if(val) setTimeout(()=>{const pw=document.getElementById('loginPassword');if(pw)pw.focus();},50);
 }
 
-function doDirectLogin() {
+async function doDirectLogin() {
   const sel = document.getElementById('loginSelect');
   const val = sel.value;
   if(val === '') { showToast('Please select your name'); return; }
   const pwEl = document.getElementById('loginPassword');
-  const entered = pwEl ? pwEl.value : '';
+  const entered = (pwEl ? pwEl.value : '').trim();
   const id = val === '9999' ? 9999 : parseInt(val);
   const user = id === 9999 ? HR_USER : team.find(p=>p.id===id);
   if(!user) { showToast('Please select your name'); return; }
-  // Check password
-  const correctPin = pins[id] || '1234';
-  if(entered !== correctPin) { showToast('Incorrect password'); if(pwEl){pwEl.value='';pwEl.focus();} return; }
-  currentUser = user;
-  document.getElementById('loginScreen').style.display='none';
-  if(pwEl) pwEl.value='';
-  persistSession();
-  applyLogin();
+
+  if(user.role === 'timesheet_only') {
+    // Timesheet-only: password stored in Supabase
+    const { data, error } = await sb.from('team').select('password,must_change_password').eq('id', id).maybeSingle();
+    const storedPw = (data && data.password) ? data.password : '1234';
+    if(entered !== storedPw) { showToast('Incorrect password'); if(pwEl){pwEl.value='';pwEl.focus();} return; }
+    currentUser = user;
+    document.getElementById('loginScreen').style.display='none';
+    if(pwEl) pwEl.value='';
+    persistSession();
+    applyLogin();
+  } else {
+    // Consultant / Admin: localStorage pins
+    const correctPin = pins[id] || '1234';
+    if(entered !== correctPin) { showToast('Incorrect password'); if(pwEl){pwEl.value='';pwEl.focus();} return; }
+    currentUser = user;
+    document.getElementById('loginScreen').style.display='none';
+    if(pwEl) pwEl.value='';
+    persistSession();
+    applyLogin();
+  }
 }
 
 function applyLogin() {
@@ -1800,7 +1998,7 @@ function applyLogin() {
   // HR sees only timesheet tab, no header action buttons
   const allTabs = document.querySelectorAll('#mainTabs .tab');
   const hrBtnsToHide = ['headerFindCapBtn','headerNewProjBtn','headerLegend','logThisWeekBtn'];
-  if(isHR()) {
+  if(isHR() || isTimesheetOnly()) {
     allTabs.forEach(t=>{
       const view = t.getAttribute('data-view');
       t.style.display = view==='timesheet' ? '' : 'none';
@@ -1808,7 +2006,15 @@ function applyLogin() {
     hrBtnsToHide.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
     const tsTab = document.querySelector('[data-view="timesheet"]');
     if(tsTab) switchTab('timesheet', tsTab);
-    document.getElementById('userMenuSettings').style.display='none';
+    // Timesheet-only: show settings (for password change) but hide admin controls
+    if(isTimesheetOnly()) {
+      document.getElementById('userMenuSettings').style.display='';
+    } else {
+      document.getElementById('userMenuSettings').style.display='none';
+    }
+    // HR and timesheet-only cannot submit leaves
+    const leaveBtn = document.getElementById('userMenuLeave');
+    if(leaveBtn) leaveBtn.style.display = 'none';
   } else {
     allTabs.forEach(t=>t.style.display='');
     hrBtnsToHide.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=''; });
@@ -1894,14 +2100,34 @@ function openSettingsModal() {
   document.getElementById('settingsNewPin').value='';
   document.getElementById('settingsConfirmPin').value='';
   if(adminMode) {
-    document.getElementById('adminTeamList').innerHTML = team.map(p=>`
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
-        <div class="avatar" style="background:${p.c.bg};color:${p.c.fg};width:26px;height:26px;font-size:10px;flex-shrink:0">${initials(p.name)}</div>
-        <input type="text" id="adminName_${p.id}" value="${p.name}" style="flex:1;min-width:0;padding:5px 8px;font-size:13px;font-weight:500;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
-        <select id="adminTitle_${p.id}" style="width:130px;padding:5px 8px;font-size:12px;flex-shrink:0">
-          ${TITLES.map(t=>`<option value="${t}"${p.title===t?' selected':''}>${t}</option>`).join('')}
-        </select>
-        <button class="btn btn-sm btn-danger" onclick="adminRemoveMember(${p.id})" title="Remove" style="flex-shrink:0">✕</button>
+    // Build manager options (managers + Ibrahim)
+  const managerOptions = [
+    `<option value="">— Auto —</option>`,
+    ...team.filter(p => p.id === 1 || p.title === 'Manager' || p.title === 'E&S Director')
+      .map(p => `<option value="${p.id}">${p.name}</option>`)
+  ].join('');
+
+  document.getElementById('adminTeamList').innerHTML = team.map(p=>`
+      <div style="margin-bottom:10px;padding:10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div class="avatar" style="background:${p.c.bg};color:${p.c.fg};width:26px;height:26px;font-size:10px;flex-shrink:0">${initials(p.name)}</div>
+          <input type="text" id="adminName_${p.id}" value="${p.name}" style="flex:1;min-width:0;padding:5px 8px;font-size:13px;font-weight:500;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
+          <select id="adminTitle_${p.id}" style="width:120px;padding:5px 8px;font-size:12px;flex-shrink:0${p.role==='timesheet_only'?';display:none':''}">
+            ${TITLES.map(t=>`<option value="${t}"${p.title===t?' selected':''}>${t}</option>`).join('')}
+          </select>
+          <select id="adminRole_${p.id}" style="width:100px;padding:5px 8px;font-size:12px;flex-shrink:0">
+            <option value="consultant"${(p.role||'consultant')==='consultant'?' selected':''}>Consultant</option>
+            <option value="timesheet_only"${p.role==='timesheet_only'?' selected':''}>TS Only</option>
+          </select>
+          <button class="btn btn-sm btn-danger" onclick="adminRemoveMember(${p.id})" title="Remove" style="flex-shrink:0">✕</button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <input type="email" id="adminEmail_${p.id}" value="${p.email||''}" placeholder="work email address"
+            style="flex:1;padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+          ${p.role!=='timesheet_only'?`<select id="adminManager_${p.id}" style="width:140px;padding:5px 8px;font-size:12px;flex-shrink:0">
+            ${managerOptions.replace(`value="${p.managerId||''}"`,`value="${p.managerId||''}" selected`)}
+          </select>`:''}
+        </div>
       </div>`).join('');
   }
   openOverlay('settingsModal');
@@ -1913,10 +2139,16 @@ function saveSettings() {
   const confirmPin = document.getElementById('settingsConfirmPin').value;
   if(isAdmin()) {
     team.forEach(p=>{
-      const nameInput = document.getElementById('adminName_'+p.id);
-      const titleSel = document.getElementById('adminTitle_'+p.id);
+      const nameInput    = document.getElementById('adminName_'+p.id);
+      const titleSel     = document.getElementById('adminTitle_'+p.id);
+      const roleSel      = document.getElementById('adminRole_'+p.id);
+      const emailInput   = document.getElementById('adminEmail_'+p.id);
+      const managerSel   = document.getElementById('adminManager_'+p.id);
       if(nameInput && nameInput.value.trim()) p.name = nameInput.value.trim();
-      if(titleSel) p.title = titleSel.value;
+      if(titleSel)   p.title     = titleSel.value;
+      if(roleSel)    p.role      = roleSel.value;
+      if(emailInput) p.email     = emailInput.value.trim();
+      if(managerSel) p.managerId = managerSel.value ? parseInt(managerSel.value) : null;
       if(p.id === currentUser.id) currentUser.name = p.name;
     });
     team.forEach(p=>saveTeamMember(p));
@@ -1929,11 +2161,22 @@ function saveSettings() {
     saveNames();
   }
   if(currentPin||newPin||confirmPin) {
-    const correct = pins[currentUser.id]||'1234';
-    if(currentPin!==correct) { showToast('Current password is incorrect'); return; }
     if(newPin.length<4) { showToast('New password must be at least 4 characters'); return; }
     if(newPin!==confirmPin) { showToast('Passwords do not match'); return; }
-    pins[currentUser.id]=newPin; savePins();
+    if(isTimesheetOnly()) {
+      // Verify + save to Supabase
+      sb.from('team').select('password').eq('id',currentUser.id).maybeSingle().then(({data})=>{
+        const stored = (data&&data.password)||'1234';
+        if(currentPin!==stored) { showToast('Current password is incorrect'); return; }
+        sb.from('team').update({password:newPin, must_change_password:false}).eq('id',currentUser.id);
+        showToast('Password updated ✓');
+      });
+      closeModal('settingsModal'); return;
+    } else {
+      const correct = pins[currentUser.id]||'1234';
+      if(currentPin!==correct) { showToast('Current password is incorrect'); return; }
+      pins[currentUser.id]=newPin; savePins();
+    }
   }
   applyLogin(); populateLoginSelect(); closeModal('settingsModal'); showToast('Settings saved ✓');
 }
@@ -2044,6 +2287,31 @@ function renderMyWork() {
 
   // LEFT PANEL — Tasks
   let tasksHtml='';
+  // Leave approvals for managers/admin — shown at top of My Work
+  if(isManager() && !isTimesheetOnly()) {
+    const pendingLeaves = leaves.filter(l => l.status === 'pending');
+    if(pendingLeaves.length) {
+      tasksHtml += `<div style="margin-bottom:20px">
+        <div style="font-size:11px;font-weight:700;color:var(--blue,#3b82f6);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px">🏖 Leave Requests (${pendingLeaves.length})</div>
+        ${pendingLeaves.map(l => {
+          const person = team.find(p => String(p.id) === String(l.personId));
+          const typeBadge = l.type === 'sick'
+            ? '<span class="leave-badge sick">Sick</span>'
+            : '<span class="leave-badge annual">Annual</span>';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
+            <div class="avatar" style="background:${person?person.c.bg:'#eee'};color:${person?person.c.fg:'#666'};width:28px;height:28px;font-size:10px;flex-shrink:0">${person?initials(person.name):'?'}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600">${person?person.name:'Unknown'}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:1px">${l.startDate} → ${l.endDate} &nbsp;${typeBadge}</div>
+            </div>
+            <button class="btn btn-sm" style="background:#dcfce7;color:#166534;border-color:#bbf7d0;flex-shrink:0" onclick="approveLeave('${l.id}').then(()=>{renderMyWork();})">✓ Approve</button>
+            <button class="btn btn-sm btn-danger" style="flex-shrink:0" onclick="rejectLeave('${l.id}').then(()=>{renderMyWork();})">✕</button>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+  }
+
   if(pendingApproval.length) {
     tasksHtml+=`<div style="margin-bottom:20px">
       <div style="font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px">⏳ Awaiting Approval</div>
@@ -2124,6 +2392,7 @@ function renderMyWork() {
       else if(n.type==='task_approved'){icon='✅';msg=`<strong>${n.data.delivName}</strong> approved by ${n.data.pmName}`;color='var(--green)';}
       else if(n.type==='task_rejected'){icon='↩️';msg=`<strong>${n.data.delivName}</strong> needs revision`;color='var(--red)';}
       else if(n.type==='task_pending_pm'){icon='🔔';msg=`<strong>${n.data.assigneeName}</strong> submitted <strong>${n.data.delivName}</strong>`;color='var(--orange)';}
+      else if(n.type==='leave_request'){icon='🏖';const lt=n.data.leaveType==='sick'?'Sick Leave':'Annual Leave';msg=`<strong>${n.data.requesterName}</strong> requested ${lt} (${n.data.startDate} → ${n.data.endDate})`;color='var(--blue)';}
       else if(n.type==='tagged'){icon='💬';msg=`<strong>${n.data.fromName}:</strong> ${n.data.message}`;color='var(--blue)';}
       return `<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start">
         <div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">${icon}</div>
@@ -2195,6 +2464,17 @@ function submitTaskForApproval(projId, delivId, checkbox) {
       deliv.pendingApproval = true; deliv.completed = false;
       addNotification(proj.creatorId, 'task_pending_pm', {delivName:deliv.name, projName:proj.name, assigneeName:currentUser.name, delivId, projId});
       addNotification(currentUser.id, 'task_submitted', {delivName:deliv.name, projName:proj.name, delivId, projId});
+      // Email the PM
+      const pm = team.find(p => p.id === proj.creatorId);
+      if(pm && pm.email) {
+        sendApprovalEmail(
+          pm.email,
+          pm.name,
+          currentUser.name,
+          `Task Submitted for Approval — ${proj.name}`,
+          `${currentUser.name} has submitted the deliverable "${deliv.name}" on project "${proj.name}" and is awaiting your approval in the ECO Consult Workload Tracker.`
+        );
+      }
       showToast('Submitted for PM approval ✓');
     }
   } else {
@@ -2233,7 +2513,7 @@ function openWeekSummaryModal(wk) {
   const ws = new Date(wk+'T12:00:00');
   const we = new Date(ws); we.setDate(we.getDate()+4);
   document.getElementById('weekSummaryTitle').textContent = fmt(ws,true)+' – '+fmt(we,true);
-  document.getElementById('weekSummaryBody').innerHTML = team.map(p=>{
+  document.getElementById('weekSummaryBody').innerHTML = team.filter(p=>p.role!=='timesheet_only').map(p=>{
     const eff = getEffectiveLoad(p.id, wk);
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
       <div class="avatar" style="background:${p.c.bg};color:${p.c.fg};width:28px;height:28px;font-size:11px">${initials(p.name)}</div>
@@ -2610,16 +2890,23 @@ function addMemberRow() {
   const idx=wrap.children.length;
   const row=document.createElement('div');
   row.className='member-add-row';
-  row.style.cssText='display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)';
+  row.style.cssText='display:grid;grid-template-columns:1.2fr 1fr 0.8fr auto;gap:8px;align-items:end;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)';
   row.innerHTML=`
     <div class="field" style="margin:0"><label style="font-size:11px">Full Name</label>
       <input type="text" class="mr-name" placeholder="e.g. Sarah Chen" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);box-sizing:border-box">
     </div>
-    <div class="field" style="margin:0"><label style="font-size:11px">Title</label>
+    <div class="field mr-title-field" style="margin:0"><label style="font-size:11px">Title</label>
       <select class="mr-title" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
         <option value="">— Title —</option>
         <option>Intern</option><option>Associate</option><option>Senior Associate</option>
         <option>Consultant</option><option>Senior Consultant</option><option>Manager</option><option>E&S Director</option>
+      </select>
+    </div>
+    <div class="field" style="margin:0"><label style="font-size:11px">Access</label>
+      <select class="mr-role" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)"
+        onchange="this.closest('.member-add-row').querySelector('.mr-title-field').style.display=this.value==='timesheet_only'?'none':'';">
+        <option value="consultant">Consultant (full access)</option>
+        <option value="timesheet_only">Timesheet only</option>
       </select>
     </div>
     <button onclick="this.closest('.member-add-row').remove()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;cursor:pointer;color:var(--muted);font-size:13px;height:36px;margin-bottom:0">✕</button>`;
@@ -2638,13 +2925,21 @@ function addAllMembers() {
     if(team.some(t=>t.name.toLowerCase()===name.toLowerCase())){
       showToast(`"${name}" already exists — skipped`); return;
     }
+    const roleEl = row.querySelector('.mr-role');
+    const role = roleEl ? roleEl.value : 'consultant';
     const newId=Date.now()+added; // stagger by row index to prevent collision
     const ci=team.length; // insertion order index
-    const newMember={id:newId,name,title:title||'Consultant',dept:'ESIA',c:PALETTE[ci%PALETTE.length]};
+    const newMember={id:newId,name,title:role==='timesheet_only'?(title||''):( title||'Consultant'),dept:'ESIA',c:PALETTE[ci%PALETTE.length],role};
     team.push(newMember);
-    pins[newId]='1234';
-    savePins();
-    saveTeamMember(newMember);
+    if(role === 'timesheet_only') {
+      // Save password to Supabase for cross-device access
+      sb.from('team').upsert({id:newId, name, title:title||'', dept:'ESIA', ci,
+        role:'timesheet_only', password:'1234', must_change_password:false});
+    } else {
+      pins[newId]='1234';
+      savePins();
+      saveTeamMember(newMember);
+    }
     added++;
   });
   if(added===0){showToast('Please enter at least one name');return;}
@@ -2659,7 +2954,7 @@ function openDayModal(dateStr) {
   const date=new Date(dateStr+'T12:00:00');
   const wk=wKey(weekStart(date,0));
   document.getElementById('dayModalTitle').textContent=fmtLong(date);
-  document.getElementById('dayModalBody').innerHTML=team.map(p=>{
+  document.getElementById('dayModalBody').innerHTML=team.filter(p=>p.role!=='timesheet_only').map(p=>{
     const eff=getEffectiveLoad(p.id,wk);
     return `<div class="day-person-row">
       <div style="display:flex;align-items:flex-start;gap:10px;flex:1">
@@ -3687,6 +3982,13 @@ function renderTimesheetView() {
   if(isHR()) {
     document.getElementById('tsUserView').style.display='none';
     document.getElementById('tsHRView').style.display='';
+    const leavePending = document.getElementById('leavePendingPanel');
+    if(leavePending) leavePending.style.display = isManager() ? '' : 'none';
+    // Populate summary + project controls on first load
+    populateHRSummaryControls();
+    populateHRProjectControls();
+    // Show leave approval panel for managers viewing timesheet tab
+    if(isManager()) loadAndRenderLeaveRequests();
     const sel=document.getElementById('hrMonthSel');
     const opts=getTsMonthOptions();
     sel.innerHTML=opts.map(o=>`<option value="${o.val}">${o.label}</option>`).join('');
@@ -3746,10 +4048,63 @@ async function loadUserTimesheet() {
   if(!tsData.columns) tsData.columns = [];
   if(!tsData.rows) tsData.rows = {};
 
+  // Overlay approved leaves — ensures leave always appears even if injection
+  // hasn't run yet (e.g. first time opening this month's timesheet after leave approved)
+  mergeApprovedLeavesIntoTsData(personId, month);
+
   // Render — each step isolated so one failure never blocks the next
   try { populateTsColDropdown(); } catch(e) { console.warn('Dropdown error:', e); }
   try { renderTsMatrix(); }       catch(e) { console.warn('Matrix error:', e); }
   try { updateTsStatus(); }       catch(e) { console.warn('Status error:', e); }
+}
+
+function mergeApprovedLeavesIntoTsData(personId, month) {
+  if(!tsData || !leaves || !leaves.length) return;
+  const [yr, mo] = month.split('-').map(Number);
+  const monthStart = month + '-01';
+  const monthEnd   = month + '-' + String(new Date(yr, mo, 0).getDate()).padStart(2, '0');
+
+  // Find approved leaves for this person that overlap this month
+  const relevantLeaves = leaves.filter(l =>
+    String(l.personId) === String(personId) &&
+    l.status === 'approved' &&
+    l.startDate <= monthEnd &&
+    l.endDate >= monthStart
+  );
+  if(!relevantLeaves.length) return;
+
+  // Group by type so annual and sick each get one column
+  const typeGroups = {}; // 'leave' | 'sick' -> [leave, ...]
+  relevantLeaves.forEach(l => {
+    const key = l.type === 'sick' ? 'sick' : 'leave';
+    if(!typeGroups[key]) typeGroups[key] = [];
+    typeGroups[key].push(l);
+  });
+
+  Object.entries(typeGroups).forEach(([colKey, leavesOfType]) => {
+    const colName = colKey === 'sick' ? 'Sick Leave' : 'Annual Leave';
+    // Find or create column
+    let col = tsData.columns.find(c => c.type === colKey);
+    if(!col) {
+      col = { id: 'col_' + colKey + '_auto', name: colName, type: colKey, autoLeave: true };
+      tsData.columns.push(col);
+    }
+    // Fill in 8h for each working day covered by any leave of this type
+    const daysInMonth = new Date(yr, mo, 0).getDate();
+    for(let day = 1; day <= daysInMonth; day++) {
+      const dateStr = month + '-' + String(day).padStart(2, '0');
+      const dow = new Date(dateStr + 'T12:00:00').getDay();
+      if(dow === 0 || dow === 6) continue; // skip weekends
+      // Check if any leave of this type covers this day
+      const covered = leavesOfType.some(l => l.startDate <= dateStr && l.endDate >= dateStr);
+      if(!covered) continue;
+      if(!tsData.rows[dateStr]) tsData.rows[dateStr] = {};
+      // Only set if not already logged (don't overwrite manual entries)
+      if(!tsData.rows[dateStr][col.id]) {
+        tsData.rows[dateStr][col.id] = 8;
+      }
+    }
+  });
 }
 
 function populateTsColDropdown() {
@@ -3758,18 +4113,35 @@ function populateTsColDropdown() {
   const otherInp = document.getElementById('tsOtherName');
   if(!sel) return;
   const uid = String(currentUser.id);
-  const myProjects = (projects||[]).filter(p => (p.members||[]).some(m => String(m.personId) === uid));
-  const existingIds = new Set((tsData.columns||[]).map(c => c.projectId || c.name));
-  const projOptions = myProjects
-    .filter(p => !existingIds.has(String(p.id)))
-    .map(p => `<option value="proj_${p.id}">${p.name||'Unnamed'}</option>`)
-    .join('');
-  sel.innerHTML =
-    `<option value="">＋ Add project column…</option>` +
-    projOptions +
-    `<option value="leave">Annual Leave</option>` +
-    `<option value="sick">Sick Leave</option>` +
-    `<option value="other">Other (custom)…</option>`;
+  const existingIds = new Set((tsData.columns||[]).map(c => c.projectId ? String(c.projectId) : null).filter(Boolean));
+
+  // My Projects: member of or created
+  const myProjects = (projects||[]).filter(p =>
+    (p.members||[]).some(m => String(m.personId) === uid) ||
+    String(p.creatorId) === uid
+  ).filter(p => !existingIds.has(String(p.id)));
+
+  // All other active projects
+  const otherProjects = (projects||[]).filter(p =>
+    !myProjects.find(mp => mp.id === p.id) &&
+    !existingIds.has(String(p.id))
+  );
+
+  const mkOpts = list => list.map(p =>
+    `<option value="proj_${p.id}">${p.name||'Unnamed'}</option>`).join('');
+
+  let inner = `<option value="">＋ Add project column…</option>`;
+  if(myProjects.length) {
+    inner += `<optgroup label="── My Projects ──">${mkOpts(myProjects)}</optgroup>`;
+  }
+  if(otherProjects.length) {
+    inner += `<optgroup label="── All Projects ──">${mkOpts(otherProjects)}</optgroup>`;
+  }
+  inner += `<optgroup label="── Other ──">
+    <option value="other">Other (custom)…</option>
+  </optgroup>`;
+
+  sel.innerHTML = inner;
   if(otherInp) sel.onchange = function() { otherInp.style.display = this.value === 'other' ? '' : 'none'; };
 }
 
@@ -3850,11 +4222,15 @@ function renderTsMatrix() {
       </td>
       ${cols.map(c=>{
         const val=rowData[c.id]||'';
-        return locked
-          ? `<td style="${tdStyle};color:${val?'var(--text)':'var(--muted)'}">${val||'—'}</td>`
-          : `<td style="${tdStyle}"><input type="number" min="0" max="24" step="0.5" value="${val}"
+        const isLeaveCol = c.type === 'leave' || c.type === 'sick';
+        const leaveBg = c.type === 'sick' ? '#fce7f3' : '#dbeafe';
+        const leaveBorderColor = c.type === 'sick' ? '#ec4899' : '#3b82f6';
+        if(locked || isLeaveCol) {
+          return `<td style="${tdStyle};${isLeaveCol && val && !isWeekend ? `background:${leaveBg};border-color:${leaveBorderColor};font-weight:600;` : ''}color:${val ? 'var(--text)' : 'var(--muted)'}">${val || '—'}</td>`;
+        }
+        return `<td style="${tdStyle}"><input type="number" min="0" max="24" step="0.5" value="${val}"
               style="width:70px;padding:4px;text-align:center;border:1px solid var(--border);border-radius:5px;
-              background:${isWeekend?'#f0ede8':'var(--surface)'};font-size:12px;color:var(--text)"
+              background:${isWeekend ? '#f0ede8' : 'var(--surface)'};font-size:12px;color:var(--text)"
               oninput="updateTsCell('${dateStr}','${c.id}',this.value)"
               ></td>`;
       }).join('')}
@@ -4019,7 +4395,7 @@ function renderHRList(sheets, month) {
           <div class="avatar" style="background:${p.c.bg};color:${p.c.fg};width:32px;height:32px">${initials(p.name)}</div>
           <div style="flex:1">
             <div style="font-weight:600;font-size:13px">${p.name}</div>
-            <div style="font-size:11px;color:var(--muted)">${p.title||''}</div>
+            ${p.role!=='timesheet_only' && p.title ? `<div style="font-size:11px;color:var(--muted)">${p.title}</div>` : ''}
           </div>
           <span style="background:${statusBg};color:${statusColor};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600">${status}</span>
         </div>
@@ -4301,6 +4677,607 @@ function buildTsSummarySheet(sheets, teamArr, month) {
   return ws;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  LEAVES
+// ══════════════════════════════════════════════════════════════════════════
+let leaves = []; // {id, personId, startDate, endDate, type:'annual'|'sick', status:'pending'|'approved', approvedBy}
+
+function isManager() {
+  // Admin (Ibrahim) + any Manager or E&S Director title can approve leaves
+  return currentUser && (
+    currentUser.id === 1 ||
+    currentUser.title === 'Manager' ||
+    currentUser.title === 'E&S Director'
+  );
+}
+
+function getManagerFor(personId) {
+  // Returns the manager team member for a given person.
+  // Hierarchy:
+  //   - If person has an explicit managerId set → use that
+  //   - If person is a Manager/E&S Director → Ibrahim (id 1)
+  //   - Otherwise → first Manager/E&S Director in team
+  const person = team.find(p => p.id === personId);
+  if(!person) return null;
+  // Explicit assignment takes priority
+  if(person.managerId) return team.find(p => p.id === person.managerId) || null;
+  // Managers report to Ibrahim
+  if(person.title === 'Manager' || person.title === 'E&S Director') {
+    return team.find(p => p.id === 1) || null; // Ibrahim
+  }
+  // Everyone else → first Manager in team
+  return team.find(p => p.title === 'Manager' || (p.id === 1)) || null;
+}
+
+async function loadLeaves() {
+  const {data} = await sb.from('leaves').select('*');
+  if(data) leaves = data.map(r=>({
+    id: r.id, personId: r.person_id,
+    startDate: r.start_date, endDate: r.end_date,
+    type: r.type || 'annual',
+    status: r.status || 'pending',
+    approvedBy: r.approved_by
+  }));
+}
+
+function getLeavesForDay(personId, dateStr) {
+  // Returns approved leaves for a person on a given YYYY-MM-DD
+  return leaves.filter(l =>
+    String(l.personId) === String(personId) &&
+    l.status === 'approved' &&
+    l.startDate <= dateStr &&
+    l.endDate >= dateStr
+  );
+}
+
+function isOnLeave(personId, dateStr) {
+  return getLeavesForDay(personId, dateStr).length > 0;
+}
+
+function getLeaveType(personId, dateStr) {
+  const ls = getLeavesForDay(personId, dateStr);
+  if(!ls.length) return null;
+  return ls[0].type; // 'annual' or 'sick'
+}
+
+function openLeaveModal() {
+  if(isTimesheetOnly() || isHR()) { showToast('Leave requests are not available for this account'); return; }
+  // Populate person dropdown (self only unless manager)
+  const personSel = document.getElementById('leavePersonSel');
+  if(isManager()) {
+    personSel.innerHTML = team.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    personSel.style.display = '';
+    document.getElementById('leavePersonLabel').style.display = '';
+  } else {
+    personSel.innerHTML = `<option value="${currentUser.id}">${currentUser.name}</option>`;
+    personSel.style.display = 'none';
+    document.getElementById('leavePersonLabel').style.display = 'none';
+  }
+  document.getElementById('leaveStart').value = '';
+  document.getElementById('leaveEnd').value = '';
+  document.getElementById('leaveType').value = 'annual';
+  // Show existing leaves for this person
+  renderMyLeavesList();
+  openOverlay('leaveModal');
+}
+
+function renderMyLeavesList() {
+  const container = document.getElementById('myLeavesList');
+  if(!container) return;
+  const uid = isManager() ? null : currentUser.id; // managers see all pending; others see their own
+  const myLeaves = leaves.filter(l =>
+    (uid === null || String(l.personId) === String(uid)) &&
+    l.status !== 'rejected' &&
+    l.endDate >= new Date().toISOString().slice(0,10) // only future/ongoing
+  ).sort((a,b) => a.startDate < b.startDate ? -1 : 1);
+
+  if(!myLeaves.length) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:12px">No upcoming leaves.</div>';
+    return;
+  }
+  container.innerHTML = myLeaves.map(l => {
+    const person = team.find(p => String(p.id) === String(l.personId));
+    const badge = l.type === 'sick'
+      ? '<span class="leave-badge sick">Sick</span>'
+      : '<span class="leave-badge annual">Annual</span>';
+    const statusBadge = l.status === 'pending'
+      ? '<span style="font-size:10px;color:var(--orange);font-weight:600">Pending</span>'
+      : '<span style="font-size:10px;color:var(--green);font-weight:600">Approved</span>';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:6px">
+      ${uid === null ? `<div class="avatar" style="background:${person?person.c.bg:'#eee'};color:${person?person.c.fg:'#666'};width:24px;height:24px;font-size:9px;flex-shrink:0">${person?initials(person.name):'?'}</div>` : ''}
+      <div style="flex:1;min-width:0">
+        ${uid === null ? `<div style="font-size:12px;font-weight:600">${person?person.name:''}</div>` : ''}
+        <div style="font-size:11px;color:var(--muted)">${l.startDate} → ${l.endDate} ${badge} ${statusBadge}</div>
+      </div>
+      <button onclick="cancelLeave('${l.id}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--muted);cursor:pointer" title="Remove leave">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function submitLeave() {
+  const personId = parseInt(document.getElementById('leavePersonSel').value);
+  const startDate = document.getElementById('leaveStart').value;
+  const endDate = document.getElementById('leaveEnd').value;
+  const type = document.getElementById('leaveType').value;
+  if(!startDate || !endDate) { showToast('Please select start and end dates'); return; }
+  if(endDate < startDate) { showToast('End date must be after start date'); return; }
+
+  // Managers auto-approve; others submit as pending
+  const status = isManager() ? 'approved' : 'pending';
+  const approvedBy = isManager() ? currentUser.id : null;
+
+  const {data, error} = await sb.from('leaves').insert([{
+    person_id: personId,
+    start_date: startDate,
+    end_date: endDate,
+    type,
+    status,
+    approved_by: approvedBy
+  }]).select();
+
+  if(error) { showToast('Error submitting leave'); return; }
+  if(status === 'approved') {
+    await injectLeaveIntoTimesheets(personId, startDate, endDate, type, data[0].id);
+  } else {
+    // Notify direct manager in-app + email
+    const manager = getManagerFor(personId);
+    const requester = team.find(p => p.id === personId) || currentUser;
+    if(manager) {
+      addNotification(manager.id, 'leave_request', {
+        requesterName: requester.name,
+        requesterId: personId,
+        startDate, endDate,
+        leaveType: type
+      });
+      // Email notification
+      if(manager.email) {
+        const typeLabel = type === 'sick' ? 'Sick Leave' : 'Annual Leave';
+        const fmtD = d => d.split('-').reverse().join('-'); // YYYY-MM-DD → DD-MM-YYYY
+        sendApprovalEmail(
+          manager.email,
+          manager.name,
+          requester.name,
+          `Leave Request — ${requester.name}`,
+          `${requester.name} has submitted a ${typeLabel} request from ${fmtD(startDate)} to ${fmtD(endDate)} and is awaiting your approval in the ECO Consult Workload Tracker.`
+        );
+      }
+    }
+  }
+  await loadLeaves();
+  closeModal('leaveModal');
+  renderWeekly(); renderMonthly();
+  showToast(status === 'approved' ? 'Leave added ✓' : 'Leave request submitted — pending manager approval ✓');
+}
+
+async function injectLeaveIntoTimesheets(personId, startDate, endDate, type, leaveId) {
+  // Find all months covered by this leave
+  const months = [];
+  let d = new Date(startDate + 'T12:00:00');
+  const end = new Date(endDate + 'T12:00:00');
+  while(d <= end) {
+    const m = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    if(!months.includes(m)) months.push(m);
+    d.setMonth(d.getMonth()+1);
+  }
+  for(const month of months) {
+    const tsId = String(personId) + '_' + month;
+    const {data: existing} = await sb.from('timesheets').select('*').eq('id', tsId).maybeSingle();
+    let ts = existing || {id: tsId, person_id: personId, month, columns:[], rows:{}, submitted:false};
+    if(!ts.columns) ts.columns = [];
+    if(!ts.rows) ts.rows = {};
+    const colKey = type === 'sick' ? 'sick' : 'leave';
+    const colName = type === 'sick' ? 'Sick Leave' : 'Annual Leave';
+    // Add column if not already present
+    if(!ts.columns.find(c => c.type === colKey)) {
+      ts.columns.push({id:'col_'+colKey+'_'+leaveId, name:colName, type:colKey});
+    }
+    const leaveColId = ts.columns.find(c => c.type === colKey).id;
+    // Fill in 8h for each working day of this leave within this month
+    const [yr,mo] = month.split('-').map(Number);
+    const daysInMonth = new Date(yr, mo, 0).getDate();
+    for(let day=1; day<=daysInMonth; day++) {
+      const dateStr = month + '-' + String(day).padStart(2,'0');
+      if(dateStr < startDate || dateStr > endDate) continue;
+      const dow = new Date(dateStr + 'T12:00:00').getDay();
+      if(dow === 0 || dow === 6) continue; // skip weekends
+      if(!ts.rows[dateStr]) ts.rows[dateStr] = {};
+      ts.rows[dateStr][leaveColId] = 8;
+    }
+    await sb.from('timesheets').upsert(ts);
+  }
+}
+
+async function loadAndRenderLeaveRequests() {
+  await loadLeaves();
+  const pending = leaves.filter(l => l.status === 'pending');
+  const container = document.getElementById('leavePendingList');
+  if(!container) return;
+  if(!pending.length) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No pending leave requests.</div>';
+    return;
+  }
+  container.innerHTML = pending.map(l => {
+    const person = team.find(p => String(p.id) === String(l.personId));
+    const badge = l.type === 'sick'
+      ? '<span class="leave-badge sick">Sick Leave</span>'
+      : '<span class="leave-badge annual">Annual Leave</span>';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
+      <div class="avatar" style="background:${person?person.c.bg:'#eee'};color:${person?person.c.fg:'#666'};width:28px;height:28px;font-size:10px;flex-shrink:0">${person?initials(person.name):'?'}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${person?person.name:'Unknown'}</div>
+        <div style="font-size:11px;color:var(--muted)">${l.startDate} → ${l.endDate}</div>
+      </div>
+      ${badge}
+      <button class="btn btn-sm" style="background:#dcfce7;color:#166534;border-color:#bbf7d0" onclick="approveLeave('${l.id}')">Approve</button>
+      <button class="btn btn-sm btn-danger" onclick="rejectLeave('${l.id}')">Decline</button>
+    </div>`;
+  }).join('');
+}
+
+async function approveLeave(leaveId) {
+  const l = leaves.find(x => x.id === leaveId);
+  await sb.from('leaves').update({status:'approved', approved_by: currentUser.id}).eq('id', leaveId);
+  if(l) await injectLeaveIntoTimesheets(l.personId, l.startDate, l.endDate, l.type, l.id);
+  await loadLeaves();
+  await loadAndRenderLeaveRequests();
+  renderWeekly(); renderMonthly();
+  // If the approved person is currently viewing their timesheet, refresh it
+  if(currentUser && l && String(currentUser.id) === String(l.personId)) {
+    const tsView = document.getElementById('view-timesheet');
+    if(tsView && !tsView.classList.contains('hidden')) loadUserTimesheet();
+  }
+  showToast('Leave approved ✓');
+}
+
+async function rejectLeave(leaveId) {
+  await sb.from('leaves').update({status:'rejected'}).eq('id', leaveId);
+  await loadLeaves();
+  loadAndRenderLeaveRequests();
+  showToast('Leave declined');
+}
+
+async function cancelLeave(leaveId) {
+  if(!confirm('Remove this leave? This will also clear the pre-filled hours from the timesheet.')) return;
+  const l = leaves.find(x => x.id === leaveId);
+  // Remove from local array instantly so UI updates without waiting for Supabase
+  leaves = leaves.filter(x => x.id !== leaveId);
+  renderMyLeavesList();   // modal list updates immediately
+  renderWeekly();          // grid clears the leave colour immediately
+  renderMonthly();
+  // Async Supabase cleanup in the background
+  await sb.from('leaves').delete().eq('id', leaveId);
+  if(l) await removeLeaveFromTimesheets(l.personId, l.startDate, l.endDate, l.type, leaveId);
+  // If the affected person is currently viewing their timesheet, refresh it
+  if(currentUser && l && String(currentUser.id) === String(l.personId)) {
+    const tsView = document.getElementById('view-timesheet');
+    if(tsView && !tsView.classList.contains('hidden')) loadUserTimesheet();
+  }
+  showToast('Leave removed ✓');
+}
+
+async function removeLeaveFromTimesheets(personId, startDate, endDate, type, leaveId) {
+  const months = [];
+  let d = new Date(startDate + 'T12:00:00');
+  const end = new Date(endDate + 'T12:00:00');
+  while(d <= end) {
+    const m = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    if(!months.includes(m)) months.push(m);
+    d.setMonth(d.getMonth()+1);
+  }
+  for(const month of months) {
+    const tsId = String(personId) + '_' + month;
+    const {data: existing} = await sb.from('timesheets').select('*').eq('id', tsId).maybeSingle();
+    if(!existing) continue;
+    const colKey = type === 'sick' ? 'sick' : 'leave';
+    // Find and remove the leave column
+    const leaveCol = (existing.columns||[]).find(c => c.type === colKey);
+    if(!leaveCol) continue;
+    // Clear hours for this leave period from rows
+    const rows = existing.rows || {};
+    const [yr,mo] = month.split('-').map(Number);
+    const daysInMonth = new Date(yr, mo, 0).getDate();
+    for(let day=1; day<=daysInMonth; day++) {
+      const dateStr = month + '-' + String(day).padStart(2,'0');
+      if(dateStr < startDate || dateStr > endDate) continue;
+      if(rows[dateStr]) delete rows[dateStr][leaveCol.id];
+    }
+    // Only remove the column if no other leaves of this type still exist for this person/month
+    const otherLeavesOfType = leaves.filter(lv =>
+      String(lv.personId) === String(personId) &&
+      lv.id !== leaveId &&
+      lv.type === type &&
+      lv.status === 'approved' &&
+      lv.startDate <= month + '-31' &&
+      lv.endDate >= month + '-01'
+    );
+    let cols = existing.columns || [];
+    if(!otherLeavesOfType.length) {
+      cols = cols.filter(c => c.type !== colKey);
+    }
+    await sb.from('timesheets').upsert({...existing, columns: cols, rows});
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  HR — MULTI-MONTH SUMMARY (Feature 1)
+// ══════════════════════════════════════════════════════════════════════════
+function hrSwitchTab(tab) {
+  ['month','summary','project'].forEach(t => {
+    const btn = document.getElementById('hrTab'+t.charAt(0).toUpperCase()+t.slice(1));
+    const panel = document.getElementById('hrPanel'+t.charAt(0).toUpperCase()+t.slice(1));
+    const active = t === tab;
+    if(btn) { btn.style.borderBottomColor = active ? 'var(--accent)' : 'transparent'; btn.style.color = active ? 'var(--accent)' : 'var(--muted)'; }
+    if(panel) panel.style.display = active ? '' : 'none';
+  });
+  if(tab === 'summary') populateHRSummaryControls();
+  if(tab === 'project') populateHRProjectControls();
+}
+
+function populateHRSummaryControls() {
+  const personSel = document.getElementById('hrSumPerson');
+  if(personSel) personSel.innerHTML = team.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  const opts = getTsMonthOptions();
+  const optHtml = opts.map(o => `<option value="${o.val}">${o.label.replace(' (upcoming)','')}</option>`).join('');
+  ['hrSumFrom','hrSumTo'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) { el.innerHTML = optHtml; }
+  });
+  const cur = opts.find(o=>!o.label.includes('upcoming')) || opts[opts.length-3];
+  const fromEl = document.getElementById('hrSumFrom');
+  const toEl = document.getElementById('hrSumTo');
+  if(fromEl && opts.length > 3) fromEl.value = opts[opts.length - 4].val;
+  if(toEl) toEl.value = cur ? cur.val : opts[opts.length-3].val;
+}
+
+async function loadHRSummary() {
+  const personId = parseInt(document.getElementById('hrSumPerson').value);
+  const fromMonth = document.getElementById('hrSumFrom').value;
+  const toMonth = document.getElementById('hrSumTo').value;
+  if(!personId || !fromMonth || !toMonth) { showToast('Please select all fields'); return; }
+  if(toMonth < fromMonth) { showToast('To month must be after From month'); return; }
+  const person = team.find(p => p.id === personId);
+  const container = document.getElementById('hrSummaryResult');
+  container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Loading…</div>';
+
+  // Fetch all timesheets for this person
+  const {data: tsAll} = await sb.from('timesheets').select('*').eq('person_id', personId);
+  const relevant = (tsAll||[]).filter(s => s.month >= fromMonth && s.month <= toMonth);
+
+  // Aggregate hours per project column name across all months
+  const totals = {}; // colName -> total hours
+  const monthTotals = {}; // month -> total hours
+  relevant.forEach(ts => {
+    let mTotal = 0;
+    (ts.columns||[]).forEach(col => {
+      const colTotal = Object.values(ts.rows||{}).reduce((sum, row) => sum + (parseFloat(row[col.id])||0), 0);
+      totals[col.name] = (totals[col.name]||0) + colTotal;
+      mTotal += colTotal;
+    });
+    monthTotals[ts.month] = mTotal;
+  });
+
+  const grandTotal = Object.values(totals).reduce((a,b)=>a+b,0);
+  const colNames = Object.keys(totals).sort();
+
+  if(!colNames.length) {
+    container.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">No timesheet data found for this period.</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="margin-bottom:12px">
+      <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:700">${person?person.name:''}</div>
+      <div style="font-size:12px;color:var(--muted)">${fromMonth} → ${toMonth} · ${grandTotal.toFixed(1)} total hours</div>
+    </div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:var(--surface2)">
+          <th style="text-align:left;padding:10px 12px;border:1px solid var(--border)">Project / Activity</th>
+          <th style="text-align:center;padding:10px 12px;border:1px solid var(--border)">Total Hours</th>
+          <th style="text-align:center;padding:10px 12px;border:1px solid var(--border)">% of Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${colNames.map(name => {
+          const hrs = totals[name];
+          const pct = grandTotal > 0 ? ((hrs/grandTotal)*100).toFixed(1) : '0.0';
+          return `<tr>
+            <td style="padding:9px 12px;border:1px solid var(--border)">${name}</td>
+            <td style="padding:9px 12px;border:1px solid var(--border);text-align:center;font-weight:600">${hrs.toFixed(1)}</td>
+            <td style="padding:9px 12px;border:1px solid var(--border);text-align:center">${pct}%</td>
+          </tr>`;
+        }).join('')}
+        <tr style="background:var(--surface2);font-weight:700">
+          <td style="padding:9px 12px;border:1px solid var(--border)">Total</td>
+          <td style="padding:9px 12px;border:1px solid var(--border);text-align:center">${grandTotal.toFixed(1)}</td>
+          <td style="padding:9px 12px;border:1px solid var(--border);text-align:center">100%</td>
+        </tr>
+      </tbody>
+    </table></div>
+    <div style="margin-top:16px">
+      <div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Month Breakdown</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${Object.entries(monthTotals).sort(([a],[b])=>a<b?-1:1).map(([m,hrs])=>`
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;text-align:center">
+            <div style="font-size:11px;color:var(--muted)">${fmtMonthYear(new Date(m+'-15'))}</div>
+            <div style="font-size:15px;font-weight:700">${hrs.toFixed(1)}<span style="font-size:10px;font-weight:400;color:var(--muted)"> hrs</span></div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+async function exportHRSummary() {
+  const personId = parseInt(document.getElementById('hrSumPerson').value);
+  const fromMonth = document.getElementById('hrSumFrom').value;
+  const toMonth = document.getElementById('hrSumTo').value;
+  const person = team.find(p => p.id === personId);
+  const {data: tsAll} = await sb.from('timesheets').select('*').eq('person_id', personId);
+  const relevant = (tsAll||[]).filter(s => s.month >= fromMonth && s.month <= toMonth);
+  if(!relevant.length) { showToast('No data to export'); return; }
+  const wb = XLSX.utils.book_new();
+  // Build summary sheet
+  const totals = {};
+  const monthData = {};
+  relevant.sort((a,b)=>a.month<b.month?-1:1).forEach(ts => {
+    monthData[ts.month] = {};
+    (ts.columns||[]).forEach(col => {
+      const hrs = Object.values(ts.rows||{}).reduce((sum,row)=>sum+(parseFloat(row[col.id])||0),0);
+      totals[col.name] = (totals[col.name]||0) + hrs;
+      monthData[ts.month][col.name] = hrs;
+    });
+  });
+  const colNames = Object.keys(totals).sort();
+  const months = Object.keys(monthData).sort();
+  const aoa = [
+    [`Multi-Month Timesheet Summary — ${person?person.name:''}`, '', `${fromMonth} to ${toMonth}`],
+    [],
+    ['Project / Activity', ...months.map(m=>fmtMonthYear(new Date(m+'-15'))), 'Total']
+  ];
+  colNames.forEach(name => {
+    aoa.push([name, ...months.map(m=>(monthData[m][name]||0).toFixed(1)), totals[name].toFixed(1)]);
+  });
+  aoa.push(['Total', ...months.map(m=>Object.values(monthData[m]).reduce((a,b)=>a+b,0).toFixed(1)),
+    Object.values(totals).reduce((a,b)=>a+b,0).toFixed(1)]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:30}, ...months.map(()=>({wch:14})), {wch:10}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+  XLSX.writeFile(wb, `Summary_${person?person.name.replace(' ','_'):'Person'}_${fromMonth}_${toMonth}.xlsx`);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  HR — PROJECT LOE VIEW (Feature 2)
+// ══════════════════════════════════════════════════════════════════════════
+function populateHRProjectControls() {
+  const projSel = document.getElementById('hrProjSel');
+  if(projSel) projSel.innerHTML = projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const opts = getTsMonthOptions();
+  const optHtml = opts.map(o=>`<option value="${o.val}">${o.label.replace(' (upcoming)','')}</option>`).join('');
+  ['hrProjFrom','hrProjTo'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.innerHTML=optHtml;
+  });
+  const cur = opts.find(o=>!o.label.includes('upcoming'))||opts[opts.length-3];
+  const fromEl=document.getElementById('hrProjFrom');
+  const toEl=document.getElementById('hrProjTo');
+  if(fromEl&&opts.length>3) fromEl.value=opts[opts.length-4].val;
+  if(toEl&&cur) toEl.value=cur.val;
+}
+
+async function loadHRProjectLOE() {
+  const projId = document.getElementById('hrProjSel').value;
+  const fromMonth = document.getElementById('hrProjFrom').value;
+  const toMonth = document.getElementById('hrProjTo').value;
+  const proj = projects.find(p=>String(p.id)===String(projId));
+  const container = document.getElementById('hrProjectResult');
+  container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Loading…</div>';
+
+  // Fetch all timesheets in range
+  const {data: tsAll} = await sb.from('timesheets').select('*');
+  const relevant = (tsAll||[]).filter(s => s.month >= fromMonth && s.month <= toMonth);
+
+  // Find all people who logged hours against this project name
+  const projName = proj ? proj.name : '';
+  const byPerson = {}; // personId -> {hours, months}
+  relevant.forEach(ts => {
+    const matchCol = (ts.columns||[]).find(c =>
+      c.type === 'project' && (String(c.projectId) === String(projId) || c.name === projName)
+    );
+    if(!matchCol) return;
+    const hrs = Object.values(ts.rows||{}).reduce((sum,row)=>sum+(parseFloat(row[matchCol.id])||0),0);
+    if(hrs <= 0) return;
+    if(!byPerson[ts.person_id]) byPerson[ts.person_id] = {hours:0, months:[]};
+    byPerson[ts.person_id].hours += hrs;
+    byPerson[ts.person_id].months.push(ts.month);
+  });
+
+  const entries = Object.entries(byPerson).sort(([,a],[,b])=>b.hours-a.hours);
+  const totalHrs = entries.reduce((s,[,v])=>s+v.hours,0);
+
+  if(!entries.length) {
+    container.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">No timesheet entries found for this project in the selected period.</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="margin-bottom:12px">
+      <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:700">${projName}</div>
+      <div style="font-size:12px;color:var(--muted)">${fromMonth} → ${toMonth} · ${totalHrs.toFixed(1)} total hours logged</div>
+    </div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:var(--surface2)">
+          <th style="text-align:left;padding:10px 12px;border:1px solid var(--border)">Team Member</th>
+          <th style="text-align:left;padding:10px 12px;border:1px solid var(--border)">Title</th>
+          <th style="text-align:center;padding:10px 12px;border:1px solid var(--border)">Hours Logged</th>
+          <th style="text-align:center;padding:10px 12px;border:1px solid var(--border)">% of Project</th>
+          <th style="text-align:center;padding:10px 12px;border:1px solid var(--border)">Months Active</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${entries.map(([pid,{hours,months}])=>{
+          const p = team.find(x=>String(x.id)===String(pid));
+          const pct = totalHrs > 0 ? ((hours/totalHrs)*100).toFixed(1) : '0.0';
+          return `<tr>
+            <td style="padding:9px 12px;border:1px solid var(--border)">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="avatar" style="background:${p?p.c.bg:'#eee'};color:${p?p.c.fg:'#666'};width:24px;height:24px;font-size:9px;flex-shrink:0">${p?initials(p.name):'?'}</div>
+                ${p?p.name:'Unknown'}
+              </div>
+            </td>
+            <td style="padding:9px 12px;border:1px solid var(--border);color:var(--muted)">${p?p.title||'':''}</td>
+            <td style="padding:9px 12px;border:1px solid var(--border);text-align:center;font-weight:600">${hours.toFixed(1)}</td>
+            <td style="padding:9px 12px;border:1px solid var(--border);text-align:center">${pct}%</td>
+            <td style="padding:9px 12px;border:1px solid var(--border);text-align:center;font-size:11px;color:var(--muted)">${[...new Set(months)].sort().map(m=>fmtMonthYear(new Date(m+'-15'))).join(', ')}</td>
+          </tr>`;
+        }).join('')}
+        <tr style="background:var(--surface2);font-weight:700">
+          <td colspan="2" style="padding:9px 12px;border:1px solid var(--border)">Total</td>
+          <td style="padding:9px 12px;border:1px solid var(--border);text-align:center">${totalHrs.toFixed(1)}</td>
+          <td style="padding:9px 12px;border:1px solid var(--border);text-align:center">100%</td>
+          <td style="padding:9px 12px;border:1px solid var(--border)"></td>
+        </tr>
+      </tbody>
+    </table></div>`;
+}
+
+async function exportHRProjectLOE() {
+  const projId = document.getElementById('hrProjSel').value;
+  const fromMonth = document.getElementById('hrProjFrom').value;
+  const toMonth = document.getElementById('hrProjTo').value;
+  const proj = projects.find(p=>String(p.id)===String(projId));
+  const {data: tsAll} = await sb.from('timesheets').select('*');
+  const relevant = (tsAll||[]).filter(s=>s.month>=fromMonth&&s.month<=toMonth);
+  const projName = proj?proj.name:'';
+  const byPerson = {};
+  relevant.forEach(ts=>{
+    const matchCol=(ts.columns||[]).find(c=>c.type==='project'&&(String(c.projectId)===String(projId)||c.name===projName));
+    if(!matchCol) return;
+    const hrs=Object.values(ts.rows||{}).reduce((sum,row)=>sum+(parseFloat(row[matchCol.id])||0),0);
+    if(hrs<=0) return;
+    if(!byPerson[ts.person_id]) byPerson[ts.person_id]={hours:0};
+    byPerson[ts.person_id].hours+=hrs;
+  });
+  const totalHrs=Object.values(byPerson).reduce((s,v)=>s+v.hours,0);
+  const aoa=[
+    [`Project LOE — ${projName}`,`${fromMonth} to ${toMonth}`],
+    [],
+    ['Team Member','Title','Hours Logged','% of Project']
+  ];
+  Object.entries(byPerson).sort(([,a],[,b])=>b.hours-a.hours).forEach(([pid,{hours}])=>{
+    const p=team.find(x=>String(x.id)===String(pid));
+    aoa.push([p?p.name:'Unknown',p?p.title||'':'',hours.toFixed(1),
+      totalHrs>0?((hours/totalHrs)*100).toFixed(1)+'%':'0%']);
+  });
+  aoa.push(['Total','',totalHrs.toFixed(1),'100%']);
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:25},{wch:20},{wch:14},{wch:12}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Project LOE');
+  XLSX.writeFile(wb,`ProjectLOE_${projName.replace(/[^a-z0-9]/gi,'_')}_${fromMonth}_${toMonth}.xlsx`);
+}
+
+
 function showToast(msg) {
   const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2500);
@@ -4339,7 +5316,10 @@ async function loadAllData() {
   if(teamRes.data && teamRes.data.length) {
     team = teamRes.data.map(r => ({
       id: r.id, name: r.name, title: r.title, dept: r.dept,
-      c: PALETTE[r.ci % PALETTE.length]
+      c: PALETTE[(r.ci||0) % PALETTE.length],
+      role: r.role || 'consultant',
+      email: r.email || '',
+      managerId: r.manager_id || null
     }));
   }
 
@@ -4367,6 +5347,8 @@ async function loadAllData() {
       readAt: r.read_at, createdAt: r.created_at_ts
     }));
   }
+  // Load leaves
+  await loadLeaves();
 }
 
 // ── SAVE helpers (called after each mutation) ────────────────────
@@ -4400,7 +5382,7 @@ async function saveNotification(n) {
 }
 async function saveTeamMember(p) {
   const ci = team.findIndex(t=>t.id===p.id);
-  await sb.from('team').upsert({id:p.id, name:p.name, title:p.title, dept:p.dept, ci: ci>=0 ? ci : 0});
+  await sb.from('team').upsert({id:p.id, name:p.name, title:p.title, dept:p.dept, ci: ci>=0 ? ci : 0, role: p.role||'consultant', email: p.email||'', manager_id: p.managerId||null});
 }
 async function deleteTeamMemberFromDB(id) {
   await sb.from('team').delete().eq('id', id);
