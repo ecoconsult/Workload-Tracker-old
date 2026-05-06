@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Team Workload Tracker v2</title>
+<title>Team Workload Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -3101,10 +3101,17 @@ function nbNoteWidth() {
   const c = document.getElementById('nbCanvas');
   return c ? Math.max(200, Math.floor((c.offsetWidth - 92) / 3)) : NOTE_DEFAULT_W;
 }
-// Resolve stored x/w to pixels — pure pixel storage, no percentage scaling
+// Resolve stored x/w to pixels using percentage if available (responsive)
 function nbResolvePx(n, field) {
-  if (field === 'x') return n.x || NB_MARGIN_SIDE;
-  return n.w || NOTE_DEFAULT_W;
+  const canvas = document.getElementById('nbCanvas');
+  const cw = (canvas && canvas.offsetWidth > 100) ? canvas.offsetWidth : 1200;
+  if (field === 'x') {
+    const px = n.xPct != null ? Math.round(n.xPct * cw) : (n.x || NB_MARGIN_SIDE);
+    return Math.max(NB_MARGIN_SIDE, Math.min(px, cw - 220 - NB_MARGIN_SIDE));
+  }
+  const xPx = nbResolvePx(n, 'x');
+  const px  = n.wPct != null ? Math.round(n.wPct * cw) : (n.w || NOTE_DEFAULT_W);
+  return Math.max(220, Math.min(px, cw - xPx - NB_MARGIN_SIDE));
 }
 function updateCanvasHeight() {
   const c = document.getElementById('nbCanvas'); if (!c) return;
@@ -3123,13 +3130,16 @@ function saveAllNotes(sectionId) {
   const sections = loadNotes();
   const s = sections.find(x => x.id === sectionId); if (!s) return;
   const canvas = document.getElementById('nbCanvas'); if (!canvas) return;
+  const cw = canvas.offsetWidth || 1200;
   s.notes = [...canvas.querySelectorAll('.nb-note')].map(el => {
+    const xPx = parseInt(el.style.left) || NB_MARGIN_SIDE;
+    const wPx = el.offsetWidth || NOTE_DEFAULT_W;
     return {
       id: el.dataset.id,
       content: (el.querySelector('.nb-note-content') || {}).innerHTML || '',
-      x: parseInt(el.style.left) || NB_MARGIN_SIDE,
-      y: parseInt(el.style.top)  || NB_MARGIN_TOP,
-      w: el.offsetWidth          || NOTE_DEFAULT_W,
+      x: xPx, y: parseInt(el.style.top) || NB_MARGIN_TOP, w: wPx,
+      xPct: parseFloat((xPx / cw).toFixed(4)),
+      wPct: parseFloat((wPx / cw).toFixed(4)),
       createdAt: Date.now()
     };
   });
@@ -3289,13 +3299,17 @@ function renderNoteEditor(sectionId) {
   const canvas = document.getElementById('nbCanvas');
   canvas.innerHTML = '';
 
-  s.notes.forEach(n => canvas.appendChild(createNoteEl(n, sectionId)));
-  updateCanvasHeight();
-  const first = canvas.querySelector('.nb-note-content');
-  if (first && !lastFocusedNote) {
-    first.focus(); lastFocusedNote = first;
-    try { const r = document.createRange(), sel = window.getSelection(); r.selectNodeContents(first); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); } catch(e) {}
+  function placeNotes() {
+    if (canvas.offsetWidth < 100) { requestAnimationFrame(placeNotes); return; }
+    s.notes.forEach(n => canvas.appendChild(createNoteEl(n, sectionId)));
+    updateCanvasHeight();
+    const first = canvas.querySelector('.nb-note-content');
+    if (first && !lastFocusedNote) {
+      first.focus(); lastFocusedNote = first;
+      try { const r = document.createRange(), sel = window.getSelection(); r.selectNodeContents(first); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); } catch(e) {}
+    }
   }
+  requestAnimationFrame(placeNotes);
 }
 
 /* ═══════════════════════════════════════════════════════════
