@@ -2225,7 +2225,10 @@ function switchTab(view, el) {
   if(view==='projects') renderProjects();
   if(view==='mywork') renderMyWork();
   if(view==='finder') { populateFinderWeeks(); renderFinder(); }
-  if(view==='notes') renderNotesView();
+  if(view==='notes') {
+    // Defer by one frame so the canvas is visible and measured before placing notes
+    requestAnimationFrame(() => renderNotesView());
+  }
   if(view==='timesheet') renderTimesheetView();
 }
 
