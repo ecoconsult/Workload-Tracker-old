@@ -645,6 +645,8 @@ select option{background:#fff}
         <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px;font-weight:600">
           <div id="projFilterAll" onclick="setProjFilter('all')" style="padding:5px 14px;cursor:pointer;color:var(--text2);transition:all 0.15s">All Projects</div>
           <div id="projFilterMine" onclick="setProjFilter('mine')" style="padding:5px 14px;cursor:pointer;background:var(--text);color:#fff;transition:all 0.15s">My Projects</div>
+          <div id="projFilterAll" onclick="setProjFilter('all')" style="padding:5px 14px;cursor:pointer;color:var(--text2);transition:all 0.15s">All Projects</div>
+          <div id="projFilterArchive" onclick="setProjFilter('archive')" style="padding:5px 14px;cursor:pointer;color:var(--text2);transition:all 0.15s">Archive</div>
         </div>
       </div>
       <button class="btn btn-primary" onclick="openAddProjectModal()">+ New Project</button>
@@ -1584,14 +1586,17 @@ function setCalFilter(f) {
 
 function setProjFilter(f) {
   projFilter = f;
-  document.getElementById('projFilterAll').style.background  = f==='all'  ? 'var(--text)' : '';
-  document.getElementById('projFilterAll').style.color       = f==='all'  ? '#fff' : 'var(--text2)';
-  document.getElementById('projFilterMine').style.background = f==='mine' ? 'var(--text)' : '';
-  const archBtn = document.getElementById('projFilterArchive'); if(archBtn) archBtn.style.background = f==='archive' ? 'var(--text)' : '';
-  document.getElementById('projFilterMine').style.color      = f==='mine' ? '#fff' : 'var(--text2)';
-  if(archBtn) archBtn.style.color = f==='archive' ? '#fff' : 'var(--text2)';
+  ['All','Mine','Archive'].forEach(name => {
+    const id = 'projFilter' + name;
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const active = (name.toLowerCase() === f) || (name === 'All' && f === 'all') || (name === 'Mine' && f === 'mine') || (name === 'Archive' && f === 'archive');
+    btn.style.background = active ? 'var(--text)' : '';
+    btn.style.color      = active ? '#fff'        : 'var(--text2)';
+  });
   renderProjects();
 }
+
 function renderProjects() {
   const uid = currentUser ? currentUser.id : null;
   const allActive   = projects.filter(p => !p.archived);
@@ -2003,8 +2008,10 @@ async function doDirectLogin() {
     persistSession();
     applyLogin();
   } else {
-    // Consultant / Admin: localStorage pins
-    const correctPin = pins[id] || '1234';
+    // Consultant / Admin: check Supabase first, fall back to localStorage pins
+    const { data: pwData } = await sb.from('team').select('password').eq('id', id).maybeSingle();
+    const supabasePw = pwData && pwData.password ? pwData.password : null;
+    const correctPin = supabasePw || pins[id] || '1234';
     if(entered !== correctPin) { showToast('Incorrect password'); if(pwEl){pwEl.value='';pwEl.focus();} return; }
     currentUser = user;
     document.getElementById('loginScreen').style.display='none';
@@ -2211,6 +2218,8 @@ function saveSettings() {
       const correct = pins[currentUser.id]||'1234';
       if(currentPin!==correct) { showToast('Current password is incorrect'); return; }
       pins[currentUser.id]=newPin; savePins();
+      // Also save to Supabase so it works cross-device and in incognito
+      sb.from('team').update({password: newPin}).eq('id', currentUser.id);
     }
   }
   applyLogin(); populateLoginSelect(); closeModal('settingsModal'); showToast('Settings saved ✓');
@@ -5162,7 +5171,12 @@ async function saveNotification(n) {
 }
 async function saveTeamMember(p) {
   const ci = team.findIndex(t=>t.id===p.id);
-  await sb.from('team').upsert({id:p.id, name:p.name, title:p.title, dept:p.dept, ci: ci>=0 ? ci : 0, role: p.role||'consultant', email: p.email||'', manager_id: p.managerId||null});
+  const { error } = await sb.from('team').upsert({
+    id:p.id, name:p.name, title:p.title, dept:p.dept,
+    ci: ci>=0 ? ci : 0, role: p.role||'consultant',
+    email: p.email||'', manager_id: p.managerId||null
+  });
+  if(error) { console.error('saveTeamMember error:', error); showToast('⚠ Save failed — check Supabase RLS policies'); }
 }
 async function deleteTeamMemberFromDB(id) {
   await sb.from('team').delete().eq('id', id);
