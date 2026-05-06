@@ -2087,14 +2087,20 @@ document.addEventListener('click',function(e){
 // ── SCHEMA NORMALIZER ─────────────────────────
 // Handles both old format {id,alloc,pmId} and new {personId,allocation,creatorId}
 function normalizeProject(p) {
+  // Parse members — may come from Supabase as a JSON string
   if(!p.members) p.members = [];
+  if(typeof p.members === 'string') { try { p.members = JSON.parse(p.members); } catch(e) { p.members = []; } }
+  if(!Array.isArray(p.members)) p.members = [];
   p.members = p.members.map(m => ({
     personId:   m.personId   ?? m.id,
     allocation: m.allocation ?? m.alloc ?? 0,
     role:       m.role       ?? (m.pmId ? 'pm' : 'coordinator')
   }));
   if(!p.creatorId && p.pmId) p.creatorId = p.pmId;
+  // Parse deliverables — may also come as JSON string
   if(!p.deliverables) p.deliverables = [];
+  if(typeof p.deliverables === 'string') { try { p.deliverables = JSON.parse(p.deliverables); } catch(e) { p.deliverables = []; } }
+  if(!Array.isArray(p.deliverables)) p.deliverables = [];
   return p;
 }
 
@@ -5149,7 +5155,6 @@ async function loadAllData() {
 
   try {
     const projRes = await sb.from('projects').select('*').order('id');
-    console.log('Projects from Supabase:', projRes.data ? projRes.data.length : 'null', projRes.error ? projRes.error.message : 'no error');
     if(projRes.data && projRes.data.length) {
       projects = projRes.data.map(r => normalizeProject({
         id: r.id, name: r.name, client: r.client||'',
