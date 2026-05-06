@@ -643,8 +643,8 @@ select option{background:#fff}
       <div style="display:flex;align-items:center;gap:16px">
         <div class="section-title">Projects</div>
         <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px;font-weight:600">
-          <div id="projFilterMine" onclick="setProjFilter('mine')" style="padding:5px 14px;cursor:pointer;background:var(--text);color:#fff;transition:all 0.15s">My Projects</div>
-          <div id="projFilterAll" onclick="setProjFilter('all')" style="padding:5px 14px;cursor:pointer;color:var(--text2);transition:all 0.15s">All Projects</div>
+          <div id="projFilterMine" onclick="setProjFilter('mine')" style="padding:5px 14px;cursor:pointer;color:var(--text2);transition:all 0.15s">My Projects</div>
+          <div id="projFilterAll" onclick="setProjFilter('all')" style="padding:5px 14px;cursor:pointer;background:var(--text);color:#fff;transition:all 0.15s">All Projects</div>
           <div id="projFilterArchive" onclick="setProjFilter('archive')" style="padding:5px 14px;cursor:pointer;color:var(--text2);transition:all 0.15s">Archive</div>
         </div>
       </div>
@@ -1571,7 +1571,7 @@ function renderMonthly() {
 }
 function shiftMonth(d) { monthOffset+=d; renderMonthly(); }
 
-let projFilter = 'mine'; // 'all', 'mine', or 'archive'
+let projFilter = 'all'; // 'all', 'mine', or 'archive'
 let calFilter  = 'all'; // 'all' or 'mine'
 
 function setCalFilter(f) {
@@ -2063,6 +2063,8 @@ function applyLogin() {
     // Always show leave button for regular consultants/managers
     const leaveBtn2 = document.getElementById('userMenuLeave');
     if(leaveBtn2) leaveBtn2.style.display='';
+    // Load notes from Supabase in background after login
+    setTimeout(() => loadNotesFromSupabase(), 1000);
     // Always land on Weekly Grid when logging in — never show previous user's view
     const weeklyTab = document.querySelector('[data-view="weekly"]');
     if(weeklyTab) switchTab('weekly', weeklyTab);
@@ -3054,10 +3056,37 @@ const NB_NOTE_GAP    = 10;
 ═══════════════════════════════════════════════════════════ */
 function notesKey()  { return currentUser ? 'wt_notes_' + currentUser.id : null; }
 function loadNotes() {
+  // Load from localStorage as primary (Supabase sync happens async separately)
   const k = notesKey(); if (!k) return [];
   try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch(e) { return []; }
 }
-function saveNotes(s) { const k = notesKey(); if (k) localStorage.setItem(k, JSON.stringify(s)); }
+function saveNotes(s) {
+  // Save to localStorage immediately
+  const k = notesKey(); if (k) localStorage.setItem(k, JSON.stringify(s));
+  // Also sync to Supabase in background
+  if(currentUser) {
+    sb.from('user_notes').upsert({
+      user_id: String(currentUser.id),
+      notes_data: JSON.stringify(s)
+    }).then(({error}) => { if(error) console.warn('notes sync:', error.message); });
+  }
+}
+async function loadNotesFromSupabase() {
+  if(!currentUser) return;
+  try {
+    const {data, error} = await sb.from('user_notes').select('notes_data').eq('user_id', String(currentUser.id)).maybeSingle();
+    if(error || !data) return;
+    const supabaseNotes = JSON.parse(data.notes_data || '[]');
+    if(!supabaseNotes.length) return;
+    // Merge: Supabase wins if it has more sections, otherwise keep local
+    const localNotes = loadNotes();
+    if(supabaseNotes.length >= localNotes.length) {
+      const k = notesKey();
+      if(k) localStorage.setItem(k, data.notes_data);
+      renderNotesView();
+    }
+  } catch(e) { /* silently skip */ }
+}
 
 /* ═══════════════════════════════════════════════════════════
    CANVAS HELPERS
@@ -4502,16 +4531,16 @@ function getManagerFor(personId) {
 
 async function loadLeaves() {
   try {
-    const {data, error} = await sb.from('leaves').select('*');
-    if(error) { console.warn('leaves table not ready:', error.message); return; }
-    if(data) leaves = data.map(r=>({
+    const res = await sb.from('leaves').select('id,person_id,start_date,end_date,type,status,approved_by');
+    if(!res || res.error) return; // silently skip if table not ready
+    if(res.data) leaves = res.data.map(r=>({
       id: r.id, personId: r.person_id,
       startDate: r.start_date, endDate: r.end_date,
       type: r.type || 'annual',
       status: r.status || 'pending',
       approvedBy: r.approved_by
     }));
-  } catch(e) { console.warn('loadLeaves failed:', e.message || String(e)); }
+  } catch(e) { /* silently skip */ }
 }
 
 function getLeavesForDay(personId, dateStr) {
