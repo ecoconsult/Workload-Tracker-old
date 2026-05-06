@@ -5149,6 +5149,7 @@ async function loadAllData() {
 
   try {
     const projRes = await sb.from('projects').select('*').order('id');
+    console.log('Projects from Supabase:', projRes.data ? projRes.data.length : 'null', projRes.error ? projRes.error.message : 'no error');
     if(projRes.data && projRes.data.length) {
       projects = projRes.data.map(r => normalizeProject({
         id: r.id, name: r.name, client: r.client||'',
