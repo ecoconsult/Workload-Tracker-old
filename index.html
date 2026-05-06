@@ -120,10 +120,12 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 /* Leave colours */
 .day-cell.on-leave-annual{background:#dbeafe!important;border-left:3px solid #3b82f6}
 .day-cell.on-leave-sick{background:#fce7f3!important;border-left:3px solid #ec4899}
+.day-cell.on-leave-business{background:#ede9fe!important;border-left:3px solid #7c3aed}
 .day-cell.on-leave-annual .chip,.day-cell.on-leave-sick .chip{display:none}
 .leave-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;display:inline-block;margin-top:2px}
 .leave-badge.annual{background:#bfdbfe;color:#1d4ed8}
 .leave-badge.sick{background:#fbcfe8;color:#be185d}
+.leave-badge.business{background:#ede9fe;color:#5b21b6}
 /* Monthly calendar leave dots */
 .cal-leave-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin:1px}
 .cal-leave-dot.annual{background:#3b82f6}
@@ -533,6 +535,7 @@ select option{background:#fff}
       <div style="display:flex;flex-direction:column;gap:2px;justify-content:center;white-space:nowrap">
         <div class="legend-item" style="margin:0"><div class="ldot" style="background:#bfdbfe;border:1px solid #3b82f6"></div> Annual Leave</div>
         <div class="legend-item" style="margin:0"><div class="ldot" style="background:#fbcfe8;border:1px solid #ec4899"></div> Sick Leave</div>
+        <div class="legend-item" style="margin:0"><div class="ldot" style="background:#ede9fe;border:1px solid #7c3aed"></div> Business Leave</div>
       </div>
     </div>
     <button class="btn btn-accent" id="headerFindCapBtn" onclick="switchTab('finder',document.querySelector('[data-view=\'finder\']'))" style="padding:7px 10px;font-size:12px;white-space:nowrap">🔍 Find Capacity</button>
@@ -875,6 +878,7 @@ select option{background:#fff}
       <select id="leaveType" style="width:100%;padding:8px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
         <option value="annual">Annual Leave</option>
         <option value="sick">Sick Leave</option>
+        <option value="business">Business Leave</option>
       </select>
     </div>
     <div id="myLeavesSection" style="margin-top:16px">
@@ -2019,6 +2023,9 @@ function applyLogin() {
     allTabs.forEach(t=>t.style.display='');
     hrBtnsToHide.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=''; });
     document.getElementById('userMenuSettings').style.display='';
+    // Always show leave button for regular consultants/managers
+    const leaveBtn2 = document.getElementById('userMenuLeave');
+    if(leaveBtn2) leaveBtn2.style.display='';
     // Always land on Weekly Grid when logging in — never show previous user's view
     const weeklyTab = document.querySelector('[data-view="weekly"]');
     if(weeklyTab) switchTab('weekly', weeklyTab);
@@ -2300,7 +2307,9 @@ function renderMyWork() {
           const person = team.find(p => String(p.id) === String(l.personId));
           const typeBadge = l.type === 'sick'
             ? '<span class="leave-badge sick">Sick</span>'
-            : '<span class="leave-badge annual">Annual</span>';
+            : l.type === 'business'
+        ? '<span class="leave-badge business">Business Leave</span>'
+        : '<span class="leave-badge annual">Annual</span>';
           return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
             <div class="avatar" style="background:${person?person.c.bg:'#eee'};color:${person?person.c.fg:'#666'};width:28px;height:28px;font-size:10px;flex-shrink:0">${person?initials(person.name):'?'}</div>
             <div style="flex:1;min-width:0">
@@ -3813,7 +3822,7 @@ function mergeApprovedLeavesIntoTsData(personId, month) {
   // Group by type so annual and sick each get one column
   const typeGroups = {}; // 'leave' | 'sick' -> [leave, ...]
   relevantLeaves.forEach(l => {
-    const key = l.type === 'sick' ? 'sick' : 'leave';
+    const key = l.type === 'sick' ? 'sick' : l.type === 'business' ? 'business' : 'leave';
     if(!typeGroups[key]) typeGroups[key] = [];
     typeGroups[key].push(l);
   });
@@ -4516,6 +4525,8 @@ function renderMyLeavesList() {
     const person = team.find(p => String(p.id) === String(l.personId));
     const badge = l.type === 'sick'
       ? '<span class="leave-badge sick">Sick</span>'
+      : l.type === 'business'
+      ? '<span class="leave-badge business">Business</span>'
       : '<span class="leave-badge annual">Annual</span>';
     const statusBadge = l.status === 'pending'
       ? '<span style="font-size:10px;color:var(--orange);font-weight:600">Pending</span>'
@@ -4568,7 +4579,7 @@ async function submitLeave() {
       });
       // Email notification
       if(manager.email) {
-        const typeLabel = type === 'sick' ? 'Sick Leave' : 'Annual Leave';
+        const typeLabel = type === 'sick' ? 'Sick Leave' : type === 'business' ? 'Business Leave' : 'Annual Leave';
         const fmtD = d => d.split('-').reverse().join('-'); // YYYY-MM-DD → DD-MM-YYYY
         sendApprovalEmail(
           manager.email,
@@ -4602,8 +4613,8 @@ async function injectLeaveIntoTimesheets(personId, startDate, endDate, type, lea
     let ts = existing || {id: tsId, person_id: personId, month, columns:[], rows:{}, submitted:false};
     if(!ts.columns) ts.columns = [];
     if(!ts.rows) ts.rows = {};
-    const colKey = type === 'sick' ? 'sick' : 'leave';
-    const colName = type === 'sick' ? 'Sick Leave' : 'Annual Leave';
+    const colKey = type === 'sick' ? 'sick' : type === 'business' ? 'business' : 'leave';
+    const colName = type === 'sick' ? 'Sick Leave' : type === 'business' ? 'Business Leave' : 'Annual Leave';
     // Add column if not already present
     if(!ts.columns.find(c => c.type === colKey)) {
       ts.columns.push({id:'col_'+colKey+'_'+leaveId, name:colName, type:colKey});
@@ -4637,7 +4648,9 @@ async function loadAndRenderLeaveRequests() {
     const person = team.find(p => String(p.id) === String(l.personId));
     const badge = l.type === 'sick'
       ? '<span class="leave-badge sick">Sick Leave</span>'
-      : '<span class="leave-badge annual">Annual Leave</span>';
+      : l.type === 'business'
+        ? '<span class="leave-badge business">Business Leave</span>'
+        : '<span class="leave-badge annual">Annual Leave</span>';
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
       <div class="avatar" style="background:${person?person.c.bg:'#eee'};color:${person?person.c.fg:'#666'};width:28px;height:28px;font-size:10px;flex-shrink:0">${person?initials(person.name):'?'}</div>
       <div style="flex:1">
