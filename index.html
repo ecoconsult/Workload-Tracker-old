@@ -2982,353 +2982,318 @@ function openDayModal(dateStr) {
 // ═══════════════════════════════════════════════
 //  NOTES — Free-form canvas (OneNote style)
 // ═══════════════════════════════════════════════
+let lastFocusedNote    = null;
+let nbUndoStack        = [];
+let nbSaveTimer        = null;
 let currentNoteSection = null;
-let nbSaveTimer = null;
-let lastFocusedNote = null;
-let nbUndoStack = [];
-const NB_UNDO_MAX = 20;
-const NOTE_DEFAULT_W = 380; // fallback; runtime width computed in nbNoteWidth()
-function nbNoteWidth() {
-  const canvas = document.getElementById('nbCanvas');
-  if (!canvas) return NOTE_DEFAULT_W;
-  // 36px left margin + 36px right margin + 2 gaps of 10px = 92px reserved
-  return Math.max(200, Math.floor((canvas.offsetWidth - 92) / 3));
-}
+const NB_UNDO_MAX    = 20;
+const NOTE_DEFAULT_W = 380;
+const NB_MARGIN_SIDE = 36;
+const NB_MARGIN_TOP  = 20;
+const NB_NOTE_GAP    = 10;
 
-function nbResolvePx(note, field) {
-  // Resolve a note's x or w to pixels for the current canvas width.
-  // If the note has a percentage saved (xPct/wPct), use that for responsive scaling.
-  // Otherwise fall back to the stored pixel value.
-  const canvas = document.getElementById('nbCanvas');
-  const cw = canvas ? canvas.offsetWidth : 1200;
-  const NB_MARGIN = 36;
-
-  if (field === 'x') {
-    if (note.xPct != null) {
-      // Clamp so note never goes outside the left/right margin
-      return Math.max(NB_MARGIN, Math.min(cw - 220 - NB_MARGIN, Math.round(note.xPct * cw)));
-    }
-    return note.x || NB_MARGIN;
-  }
-  if (field === 'w') {
-    if (note.wPct != null) {
-      // Clamp between min (220px) and max (canvas - left margin - right margin)
-      const x = nbResolvePx(note, 'x');
-      return Math.max(220, Math.min(cw - x - NB_MARGIN, Math.round(note.wPct * cw)));
-    }
-    return note.w || NOTE_DEFAULT_W;
-  }
-  return 0;
-}
-
-function notesKey() { return currentUser ? 'wt_notes_'+currentUser.id : null; }
+/* ═══════════════════════════════════════════════════════════
+   STORAGE
+═══════════════════════════════════════════════════════════ */
+function notesKey()  { return currentUser ? 'wt_notes_' + currentUser.id : null; }
 function loadNotes() {
-  const k=notesKey(); if(!k) return [];
-  try { return JSON.parse(localStorage.getItem(k)||'[]'); } catch(e) { return []; }
+  const k = notesKey(); if (!k) return [];
+  try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch(e) { return []; }
 }
-function saveNotes(sections) {
-  const k=notesKey(); if(!k) return;
-  localStorage.setItem(k, JSON.stringify(sections));
+function saveNotes(s) { const k = notesKey(); if (k) localStorage.setItem(k, JSON.stringify(s)); }
+
+/* ═══════════════════════════════════════════════════════════
+   CANVAS HELPERS
+═══════════════════════════════════════════════════════════ */
+function nbNoteWidth() {
+  const c = document.getElementById('nbCanvas');
+  return c ? Math.max(200, Math.floor((c.offsetWidth - 92) / 3)) : NOTE_DEFAULT_W;
+}
+// Resolve stored x/w to pixels — supports % (responsive) and absolute px (legacy)
+function nbResolvePx(n, field) {
+  const c = document.getElementById('nbCanvas');
+  const cw = c ? c.offsetWidth : 1200;
+  if (field === 'x') {
+    const raw = n.xPct != null ? Math.round(n.xPct * cw) : (n.x || NB_MARGIN_SIDE);
+    return Math.max(NB_MARGIN_SIDE, Math.min(raw, cw - 220 - NB_MARGIN_SIDE));
+  }
+  const x   = nbResolvePx(n, 'x');
+  const raw = n.wPct != null ? Math.round(n.wPct * cw) : (n.w || NOTE_DEFAULT_W);
+  return Math.max(220, Math.min(raw, cw - x - NB_MARGIN_SIDE));
+}
+function updateCanvasHeight() {
+  const c = document.getElementById('nbCanvas'); if (!c) return;
+  let max = 500;
+  c.querySelectorAll('.nb-note').forEach(n => {
+    const b = (parseInt(n.style.top) || 0) + n.offsetHeight + 40;
+    if (b > max) max = b;
+  });
+  c.style.minHeight = max + 'px';
 }
 
-// ── Section management ─────────────────────────
+/* ═══════════════════════════════════════════════════════════
+   SAVE
+═══════════════════════════════════════════════════════════ */
+function saveAllNotes(sectionId) {
+  const sections = loadNotes();
+  const s = sections.find(x => x.id === sectionId); if (!s) return;
+  const canvas = document.getElementById('nbCanvas'); if (!canvas) return;
+  const cw = canvas.offsetWidth || 1200;
+  s.notes = [...canvas.querySelectorAll('.nb-note')].map(el => {
+    const xPx = parseInt(el.style.left) || NB_MARGIN_SIDE;
+    const wPx = el.offsetWidth || NOTE_DEFAULT_W;
+    return {
+      id: el.dataset.id,
+      content: (el.querySelector('.nb-note-content') || {}).innerHTML || '',
+      x: xPx, y: parseInt(el.style.top) || NB_MARGIN_TOP, w: wPx,
+      xPct: xPx / cw, wPct: wPx / cw,
+      createdAt: Date.now()
+    };
+  });
+  saveNotes(sections);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SECTION MANAGEMENT
+═══════════════════════════════════════════════════════════ */
 function openAddNoteSection() {
-  if(!currentUser){showToast('Please log in first');return;}
-  document.getElementById('noteSectionTitle').value='';
-  // Populate parent selector with top-level sections only
-  const sel=document.getElementById('noteSectionParent');
-  if(sel){
-    const sections=loadNotes().filter(s=>!s.parentId);
-    sel.innerHTML='<option value="">Top-level section</option>'+
-      sections.map(s=>`<option value="${s.id}">↳ Subsection of: ${s.title}</option>`).join('');
+  if (!currentUser) { showToast('Please log in first'); return; }
+  document.getElementById('noteSectionTitle').value = '';
+  const sel = document.getElementById('noteSectionParent');
+  if (sel) {
+    const tops = loadNotes().filter(s => !s.parentId);
+    sel.innerHTML = '<option value="">Top-level section</option>' +
+      tops.map(s => `<option value="${s.id}">\u21b3 Subsection of: ${s.title}</option>`).join('');
   }
   openOverlay('addNoteSectionModal');
-  setTimeout(()=>document.getElementById('noteSectionTitle').focus(),100);
+  setTimeout(() => document.getElementById('noteSectionTitle').focus(), 100);
 }
-
 function saveNoteSection() {
-  const title=document.getElementById('noteSectionTitle').value.trim();
-  if(!title){showToast('Please enter a section title');return;}
-  const sections=loadNotes();
-  const parentId=document.getElementById('noteSectionParent')?.value||null;
-  const newSec={id:'ns'+Date.now(),title,parentId,notes:[{id:'n'+Date.now(),content:'',x:36,y:20,w:nbNoteWidth(),createdAt:Date.now()}],stickies:[]};
-  sections.push(newSec);
+  const title = document.getElementById('noteSectionTitle').value.trim();
+  if (!title) { showToast('Please enter a section title'); return; }
+  const sections = loadNotes();
+  const parentId = document.getElementById('noteSectionParent')?.value || null;
+  const sec = { id: 'ns' + Date.now(), title, parentId,
+    notes: [{ id: 'n' + Date.now(), content: '', x: NB_MARGIN_SIDE, y: NB_MARGIN_TOP, w: nbNoteWidth(), createdAt: Date.now() }],
+    stickies: [] };
+  sections.push(sec);
   saveNotes(sections);
-  currentNoteSection=newSec.id;
+  currentNoteSection = sec.id;
   closeModal('addNoteSectionModal');
   renderNotesView();
-  showToast('Section created ✓');
+  showToast('Section created \u2713');
 }
-
 function deleteNoteSection(sectionId) {
-  if(!confirm('Delete this section and all its content?')) return;
-  const sections=loadNotes().filter(s=>s.id!==sectionId);
-  saveNotes(sections);
-  if(currentNoteSection===sectionId){currentNoteSection=null;}
+  if (!confirm('Delete this section and all its content?')) return;
+  saveNotes(loadNotes().filter(s => s.id !== sectionId));
+  if (currentNoteSection === sectionId) currentNoteSection = null;
   renderNotesView();
-  showToast('Section deleted');
 }
-
-// ── View rendering ─────────────────────────────
-let nbSectionDragSrc = null;
-
-function renderNotesView() {
-  if(!currentUser) return;
-  const sections=loadNotes();
-  const sb2=document.getElementById('notesSidebar');
-  if(!sb2) return;
-
-  // Separate top-level sections and subsections
-  const topLevel = sections.filter(s=>!s.parentId);
-  const children  = sections.filter(s=>s.parentId);
-
-  // Track collapsed state per section (persists in memory during session)
-  if(!window.nbCollapsed) window.nbCollapsed={};
-
-  sb2.innerHTML = topLevel.map(s=>{
-    const subs = children.filter(c=>c.parentId===s.id);
-    const isActive = currentNoteSection===s.id;
-    const hasSubs = subs.length>0;
-    const isCollapsed = hasSubs && window.nbCollapsed[s.id];
-
-    const subHtml = (!isCollapsed && hasSubs) ? subs.map(sub=>{
-      const subActive = currentNoteSection===sub.id;
-      return `<div class="nb-sec-item nb-sec-sub" data-id="${sub.id}"
-        onclick="selectNoteSection('${sub.id}')"
-        draggable="true"
-        style="padding:5px 9px 5px 26px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:500;
-        margin-bottom:2px;display:flex;align-items:center;gap:6px;
-        background:${subActive?'var(--green-bg)':''};
-        color:${subActive?'var(--green)':'var(--text2)'};transition:background 0.1s">
-        <span style="color:var(--muted);cursor:grab;font-size:10px;flex-shrink:0">⠿</span>
-        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">↳ ${sub.title}</span>
-      </div>`;
-    }).join('') : '';
-
-    // Arrow: ▾ when expanded, ▸ when collapsed, nothing if no subs
-    const arrow = hasSubs
-      ? `<span onclick="event.stopPropagation();nbToggleCollapse('${s.id}')"
-           style="font-size:10px;color:var(--muted);cursor:pointer;flex-shrink:0;padding:2px;
-           transform:${isCollapsed?'rotate(-90deg)':'rotate(0deg)'};display:inline-block;transition:transform 0.2s"
-           title="${isCollapsed?'Expand':'Collapse'}">▾</span>`
-      : '<span style="width:14px;flex-shrink:0"></span>';
-
-    return `<div class="nb-sec-item" data-id="${s.id}" draggable="true" style="margin-bottom:4px">
-      <div onclick="selectNoteSection('${s.id}')"
-        style="padding:6px 8px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:500;
-        display:flex;align-items:center;gap:5px;
-        background:${isActive?'var(--green-bg)':''};
-        color:${isActive?'var(--green)':'var(--text)'};transition:background 0.1s"
-        onmouseenter="if('${s.id}'!==currentNoteSection)this.style.background='var(--surface)'"
-        onmouseleave="if('${s.id}'!==currentNoteSection)this.style.background=''">
-        <span style="color:var(--muted);cursor:grab;font-size:12px;flex-shrink:0">⠿</span>
-        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📁 ${s.title}</span>
-        ${arrow}
-      </div>
-      ${subHtml}
-    </div>`;
-  }).join('');
-
-  // Drag to reorder sections
-  sb2.querySelectorAll('.nb-sec-item[data-id]').forEach(el=>{
-    el.addEventListener('dragstart',e=>{
-      nbSectionDragSrc=el;
-      setTimeout(()=>el.style.opacity='0.4',0);
-      e.dataTransfer.effectAllowed='move';
-      e.stopPropagation();
-    });
-    el.addEventListener('dragend',()=>{
-      el.style.opacity='1';
-      sb2.querySelectorAll('.nb-sec-item').forEach(x=>x.style.borderTop='');
-    });
-    el.addEventListener('dragover',e=>{
-      e.preventDefault();
-      if(nbSectionDragSrc&&nbSectionDragSrc!==el) el.style.borderTop='2px solid var(--green)';
-    });
-    el.addEventListener('dragleave',()=>el.style.borderTop='');
-    el.addEventListener('drop',e=>{
-      e.preventDefault(); e.stopPropagation();
-      el.style.borderTop='';
-      if(!nbSectionDragSrc||nbSectionDragSrc===el) return;
-      const sections=loadNotes();
-      const srcId=nbSectionDragSrc.dataset.id;
-      const tgtId=el.dataset.id;
-      const srcIdx=sections.findIndex(s=>s.id===srcId);
-      const tgtIdx=sections.findIndex(s=>s.id===tgtId);
-      if(srcIdx<0||tgtIdx<0) return;
-      const [moved]=sections.splice(srcIdx,1);
-      sections.splice(tgtIdx,0,moved);
-      saveNotes(sections);
-      renderNotesView();
-    });
-  });
-
-  if(currentNoteSection && sections.find(s=>s.id===currentNoteSection)) {
-    renderNoteEditor(currentNoteSection);
-  } else {
-    // No valid section selected — show empty state
-    currentNoteSection = null;
-    document.getElementById('nbSectionHeader').style.display='none';
-    const canvas=document.getElementById('nbCanvas');
-    if(canvas) canvas.innerHTML='';
-    document.getElementById('nbEmpty').style.display='block';
-  }
+function selectNoteSection(sectionId) {
+  if (currentNoteSection) saveAllNotes(currentNoteSection);
+  currentNoteSection = sectionId;
+  nbUndoStack = [];
+  lastFocusedNote = null;
+  renderNotesView();
 }
-
+function saveSecTitle(newTitle) {
+  if (!newTitle || !currentNoteSection) return;
+  const sections = loadNotes();
+  const s = sections.find(x => x.id === currentNoteSection);
+  if (!s || s.title === newTitle) return;
+  s.title = newTitle; saveNotes(sections); renderNotesView();
+}
 let nbEditMode = false;
-
 function nbToggleEditMode() {
   nbEditMode = !nbEditMode;
-  const btn = document.getElementById('nbEditModeBtn');
+  const btn   = document.getElementById('nbEditModeBtn');
   const title = document.getElementById('nbSectionTitle');
-  if(btn) { btn.textContent = nbEditMode ? '✓ Done' : '✎ Edit'; btn.style.color = nbEditMode ? 'var(--green)' : 'var(--muted)'; }
-  if(title) {
+  if (btn)   { btn.textContent = nbEditMode ? '\u2713 Done' : '\u270e Edit'; btn.style.color = nbEditMode ? 'var(--green)' : 'var(--muted)'; }
+  if (title) {
     title.contentEditable = nbEditMode ? 'true' : 'false';
     title.style.cursor = nbEditMode ? 'text' : 'default';
     title.style.borderBottom = nbEditMode ? '2px solid var(--green)' : 'none';
-    if(nbEditMode) { title.focus(); placeCursorEnd(title); }
+    if (nbEditMode) { title.focus(); placeCursorEnd(title); }
   }
 }
-
 function nbToggleCollapse(sectionId) {
-  if(!window.nbCollapsed) window.nbCollapsed = {};
+  if (!window.nbCollapsed) window.nbCollapsed = {};
   window.nbCollapsed[sectionId] = !window.nbCollapsed[sectionId];
   renderNotesView();
 }
 
-function saveSecTitle(newTitle) {
-  if(!newTitle || !currentNoteSection) return;
+/* ═══════════════════════════════════════════════════════════
+   VIEW RENDERING
+═══════════════════════════════════════════════════════════ */
+let nbSectionDragSrc = null;
+function renderNotesView() {
+  if (!currentUser) return;
   const sections = loadNotes();
-  const s = sections.find(x=>x.id===currentNoteSection);
-  if(!s || s.title===newTitle) return;
-  s.title = newTitle;
-  saveNotes(sections);
-  renderNotesView();
-}
+  const sb2 = document.getElementById('notesSidebar'); if (!sb2) return;
+  if (!window.nbCollapsed) window.nbCollapsed = {};
+  const topLevel = sections.filter(s => !s.parentId);
+  const children  = sections.filter(s =>  s.parentId);
 
-function selectNoteSection(sectionId) {
-  if(currentNoteSection) saveAllNotes(currentNoteSection);
-  currentNoteSection=sectionId;
-  nbUndoStack=[];
-  lastFocusedNote=null; // reset so stale reference never silently fails
-  renderNotesView();
-}
+  sb2.innerHTML = topLevel.map(s => {
+    const subs     = children.filter(c => c.parentId === s.id);
+    const isAct    = currentNoteSection === s.id;
+    const hasSubs  = subs.length > 0;
+    const collapsed = hasSubs && window.nbCollapsed[s.id];
+    const subHtml = (!collapsed && hasSubs) ? subs.map(sub => {
+      const sa = currentNoteSection === sub.id;
+      return `<div class="nb-sec-item nb-sec-sub" data-id="${sub.id}"
+        onclick="selectNoteSection('${sub.id}')" draggable="true"
+        style="padding:5px 9px 5px 26px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:500;
+        margin-bottom:2px;display:flex;align-items:center;gap:6px;
+        background:${sa ? 'var(--green-bg)' : ''};color:${sa ? 'var(--green)' : 'var(--text2)'}">
+        <span style="color:var(--muted);cursor:grab;font-size:10px;flex-shrink:0">&#9783;</span>
+        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">&#8627; ${sub.title}</span>
+      </div>`;
+    }).join('') : '';
+    const arrow = hasSubs
+      ? `<span onclick="event.stopPropagation();nbToggleCollapse('${s.id}')"
+           style="font-size:10px;color:var(--muted);cursor:pointer;flex-shrink:0;padding:2px;
+           display:inline-block;transform:${collapsed ? 'rotate(-90deg)' : ''}">&#9662;</span>`
+      : '<span style="width:14px;flex-shrink:0"></span>';
+    return `<div class="nb-sec-item" data-id="${s.id}" draggable="true" style="margin-bottom:4px">
+      <div onclick="selectNoteSection('${s.id}')"
+        style="padding:6px 8px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:500;
+        display:flex;align-items:center;gap:5px;
+        background:${isAct ? 'var(--green-bg)' : ''};color:${isAct ? 'var(--green)' : 'var(--text)'}">
+        <span style="color:var(--muted);cursor:grab;font-size:12px;flex-shrink:0">&#9783;</span>
+        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">&#128193; ${s.title}</span>
+        ${arrow}
+      </div>${subHtml}
+    </div>`;
+  }).join('');
 
-function renderNoteEditor(sectionId) {
-  const sections=loadNotes();
-  const s=sections.find(x=>x.id===sectionId); if(!s) return;
-  if(!s.notes||!s.notes.length) s.notes=[{id:'n'+Date.now(),content:'',x:36,y:20,w:nbNoteWidth(),createdAt:Date.now()}];
+  sb2.querySelectorAll('.nb-sec-item[data-id]').forEach(el => {
+    el.addEventListener('dragstart', e => { nbSectionDragSrc = el; setTimeout(() => el.style.opacity = '0.4', 0); e.dataTransfer.effectAllowed = 'move'; e.stopPropagation(); });
+    el.addEventListener('dragend',   () => { el.style.opacity = '1'; sb2.querySelectorAll('.nb-sec-item').forEach(x => x.style.borderTop = ''); });
+    el.addEventListener('dragover',  e => { e.preventDefault(); if (nbSectionDragSrc && nbSectionDragSrc !== el) el.style.borderTop = '2px solid var(--green)'; });
+    el.addEventListener('dragleave', () => el.style.borderTop = '');
+    el.addEventListener('drop', e => {
+      e.preventDefault(); e.stopPropagation(); el.style.borderTop = '';
+      if (!nbSectionDragSrc || nbSectionDragSrc === el) return;
+      const secs = loadNotes();
+      const si = secs.findIndex(s => s.id === nbSectionDragSrc.dataset.id);
+      const ti = secs.findIndex(s => s.id === el.dataset.id);
+      if (si < 0 || ti < 0) return;
+      const [m] = secs.splice(si, 1); secs.splice(ti, 0, m);
+      saveNotes(secs); renderNotesView();
+    });
+  });
 
-  document.getElementById('nbSectionHeader').style.display='block';
-  document.getElementById('nbSectionTitle').textContent=s.title;
-  document.getElementById('nbEmpty').style.display='none';
-  renderStickies(s);
-
-  const canvas=document.getElementById('nbCanvas');
-  canvas.innerHTML='';
-  s.notes.forEach(n=>canvas.appendChild(createNoteEl(n, sectionId)));
-  updateCanvasHeight();
-  // Auto-focus first note so toolbar works immediately without clicking
-  const firstContent=canvas.querySelector('.nb-note-content');
-  if(firstContent&&!lastFocusedNote){
-    firstContent.focus();
-    lastFocusedNote=firstContent;
-    // Place cursor at end of content
-    try{const r=document.createRange(),sel=window.getSelection();r.selectNodeContents(firstContent);r.collapse(false);sel.removeAllRanges();sel.addRange(r);}catch(e){}
+  if (currentNoteSection && sections.find(s => s.id === currentNoteSection)) {
+    renderNoteEditor(currentNoteSection);
+  } else {
+    currentNoteSection = null;
+    document.getElementById('nbSectionHeader').style.display = 'none';
+    const canvas = document.getElementById('nbCanvas'); if (canvas) canvas.innerHTML = '';
+    document.getElementById('nbEmpty').style.display = 'block';
   }
 }
 
+function renderNoteEditor(sectionId) {
+  const sections = loadNotes();
+  const s = sections.find(x => x.id === sectionId); if (!s) return;
+  if (!s.notes || !s.notes.length)
+    s.notes = [{ id: 'n' + Date.now(), content: '', x: NB_MARGIN_SIDE, y: NB_MARGIN_TOP, w: nbNoteWidth(), createdAt: Date.now() }];
+  document.getElementById('nbSectionHeader').style.display = 'block';
+  document.getElementById('nbSectionTitle').textContent = s.title;
+  document.getElementById('nbEmpty').style.display = 'none';
+  renderStickies(s);
+  const canvas = document.getElementById('nbCanvas');
+  canvas.innerHTML = '';
+  s.notes.forEach(n => canvas.appendChild(createNoteEl(n, sectionId)));
+  updateCanvasHeight();
+  const first = canvas.querySelector('.nb-note-content');
+  if (first && !lastFocusedNote) {
+    first.focus(); lastFocusedNote = first;
+    try { const r = document.createRange(), sel = window.getSelection(); r.selectNodeContents(first); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); } catch(e) {}
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NOTE ELEMENT
+═══════════════════════════════════════════════════════════ */
 function createNoteEl(n, sectionId) {
-  const el=document.createElement('div');
-  el.className='nb-note';
-  el.dataset.id=n.id;
-  el.style.cssText=`position:absolute;left:${nbResolvePx(n,'x')}px;top:${n.y||20}px;width:${nbResolvePx(n,'w')}px;
+  const el = document.createElement('div');
+  el.className  = 'nb-note';
+  el.dataset.id = n.id;
+  el.style.cssText = `position:absolute;left:${nbResolvePx(n,'x')}px;top:${n.y || NB_MARGIN_TOP}px;width:${nbResolvePx(n,'w')}px;
     min-width:220px;min-height:120px;background:var(--surface);border:1px solid var(--border);
     border-radius:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;
     resize:horizontal;overflow:hidden;box-sizing:border-box`;
-
-  el.innerHTML=`
+  el.innerHTML = `
     <div class="nb-note-bar" style="display:flex;align-items:center;padding:6px 10px;background:var(--surface2);
       border-bottom:1px solid var(--border);gap:6px;cursor:grab;user-select:none;flex-shrink:0;border-radius:11px 11px 0 0">
-      <span style="color:var(--muted);font-size:13px;flex-shrink:0">⠿</span>
+      <span style="color:var(--muted);font-size:13px;flex-shrink:0">&#9783;</span>
       <span style="font-size:11px;color:var(--muted);font-weight:500;flex:1">Note</span>
       <button onmousedown="event.stopPropagation()" onclick="nbDeleteNote('${n.id}')"
-        style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:0 4px;line-height:1;flex-shrink:0">✕</button>
+        style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:0 4px;line-height:1;flex-shrink:0">&#x2715;</button>
     </div>
-    <div class="nb-note-content" contenteditable="true" data-placeholder="Start typing…"
+    <div class="nb-note-content" contenteditable="true" data-placeholder="Start typing\u2026"
       style="flex:1;padding:14px 16px;outline:none;font-size:14px;line-height:1.8;
       word-break:break-word;overflow-wrap:break-word;overflow-y:auto;min-height:80px;user-select:text;-webkit-user-select:text"
-      onfocus="lastFocusedNote=this;nbSyncFontSel()" onkeyup="nbSyncFontSel()" onmouseup="nbSyncFontSel()">${n.content||''}</div>`;
+      onfocus="lastFocusedNote=this;nbSyncFontSel()" onkeyup="nbSyncFontSel()" onmouseup="nbSyncFontSel()">${n.content || ''}</div>`;
 
-  // Make draggable by title bar
-  const bar=el.querySelector('.nb-note-bar');
-  bar.addEventListener('mousedown', function(e) {
-    if(e.target.tagName==='BUTTON') return;
+  /* ── Drag by title bar ─────────────────────────────────────────────── */
+  el.querySelector('.nb-note-bar').addEventListener('mousedown', function(e) {
+    if (e.target.tagName === 'BUTTON') return;
     e.preventDefault();
-    const startX=e.clientX, startY=e.clientY;
-    const startL=parseInt(el.style.left)||0, startT=parseInt(el.style.top)||0;
-    // Bring to front
-    let maxZ=100;
-    document.querySelectorAll('.nb-note').forEach(n=>{const z=parseInt(n.style.zIndex)||1;if(z>maxZ)maxZ=z;});
-    el.style.zIndex=maxZ+1; el.style.boxShadow='0 8px 30px rgba(0,0,0,0.15)';
-    function onMove(e) {
-      const canvas=document.getElementById('nbCanvas'); if(!canvas) return;
-      const canvasW=canvas.offsetWidth;
-      const newL=Math.max(NB_MARGIN_SIDE, Math.min(canvasW-el.offsetWidth-NB_MARGIN_SIDE, startL+e.clientX-startX));
-      const newT=Math.max(NB_MARGIN_TOP, startT+e.clientY-startY);
-      el.style.left=newL+'px';
-      el.style.top=newT+'px';
+    const sx = e.clientX, sy = e.clientY;
+    const sl = parseInt(el.style.left) || 0, st = parseInt(el.style.top) || 0;
+    let maxZ = 100; document.querySelectorAll('.nb-note').forEach(x => { const z = parseInt(x.style.zIndex) || 1; if (z > maxZ) maxZ = z; });
+    el.style.zIndex = maxZ + 1; el.style.boxShadow = '0 8px 30px rgba(0,0,0,0.15)';
+    const onMove = e => {
+      const cv = document.getElementById('nbCanvas'); if (!cv) return;
+      el.style.left = Math.max(NB_MARGIN_SIDE, Math.min(cv.offsetWidth - el.offsetWidth - NB_MARGIN_SIDE, sl + e.clientX - sx)) + 'px';
+      el.style.top  = Math.max(NB_MARGIN_TOP, st + e.clientY - sy) + 'px';
       updateCanvasHeight();
-    }
-    function onUp() {
-      el.style.boxShadow='var(--shadow)';
-      document.removeEventListener('mousemove',onMove);
-      document.removeEventListener('mouseup',onUp);
-      nbResolveOverlaps(el);
-      saveAllNotes(sectionId);
-    }
-    document.addEventListener('mousemove',onMove);
-    document.addEventListener('mouseup',onUp);
+    };
+    const onUp = () => {
+      el.style.boxShadow = 'var(--shadow)';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      nbResolveOverlaps(el); saveAllNotes(sectionId);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
   });
 
-  // Save on content change
-  const content=el.querySelector('.nb-note-content');
+  const content = el.querySelector('.nb-note-content');
+
+  /* ── Todo checkbox click ───────────────────────────────────────────── */
   content.addEventListener('mousedown', function(e) {
     e.stopPropagation();
-    // Clicking left 26px of a todo li toggles done state
     const li = e.target.closest && e.target.closest('.nb-todo-list li');
-    if(li) {
-      const rect = li.getBoundingClientRect();
-      if(e.clientX - rect.left < 26) {
-        e.preventDefault();
-        li.classList.toggle('nb-done');
-        clearTimeout(nbSaveTimer);
-        nbSaveTimer=setTimeout(()=>saveAllNotes(sectionId),400);
-      }
+    if (li && e.clientX - li.getBoundingClientRect().left < 26) {
+      e.preventDefault();
+      li.classList.toggle('nb-done');
+      clearTimeout(nbSaveTimer); nbSaveTimer = setTimeout(() => saveAllNotes(sectionId), 400);
     }
   });
-  // Tab key → indent/dedent list items (24px per level ≈ 0.64cm)
+
+  /* ── Keyboard: Tab = indent, Space = auto-list ─────────────────────── */
   content.addEventListener('keydown', function(e) {
     if (e.key === 'Tab') {
       e.preventDefault();
       document.execCommand(e.shiftKey ? 'outdent' : 'indent');
-      clearTimeout(nbSaveTimer);
-      nbSaveTimer = setTimeout(() => saveAllNotes(sectionId), 400);
+      clearTimeout(nbSaveTimer); nbSaveTimer = setTimeout(() => saveAllNotes(sectionId), 400);
       return;
     }
     if (e.key === ' ') {
       const sel = window.getSelection();
       if (sel && sel.rangeCount) {
-        const range = sel.getRangeAt(0);
-        const node  = range.startContainer;
+        const node = sel.getRangeAt(0).startContainer;
         if (node.nodeType === 3 && !node.parentElement.closest('li')) {
-          const before = node.textContent.slice(0, range.startOffset);
-          if (/^[0-9]+[.]$/.test(before.trim())) {
+          const before = node.textContent.slice(0, sel.getRangeAt(0).startOffset);
+          if (/^\d+\.$/.test(before.trim())) {
             e.preventDefault();
-            node.textContent = node.textContent.slice(range.startOffset);
+            node.textContent = node.textContent.slice(sel.getRangeAt(0).startOffset);
             document.execCommand('insertOrderedList');
-            clearTimeout(nbSaveTimer);
-            nbSaveTimer = setTimeout(() => saveAllNotes(sectionId), 400);
+            clearTimeout(nbSaveTimer); nbSaveTimer = setTimeout(() => saveAllNotes(sectionId), 400);
             return;
           }
         }
@@ -3336,323 +3301,171 @@ function createNoteEl(n, sectionId) {
     }
   });
 
-  content.addEventListener('input',()=>{
-    clearTimeout(nbSaveTimer);
-    nbSaveTimer=setTimeout(()=>saveAllNotes(sectionId),800);
+  content.addEventListener('input',   () => { clearTimeout(nbSaveTimer); nbSaveTimer = setTimeout(() => saveAllNotes(sectionId), 800); });
+  content.addEventListener('keyup',   nbSaveLastRange);
+  content.addEventListener('mouseup', nbSaveLastRange);
+  content.addEventListener('focus',   nbSaveLastRange);
+
+  new ResizeObserver(() => {
+    const cv = document.getElementById('nbCanvas'); if (!cv) return;
+    const maxW = cv.offsetWidth - (parseInt(el.style.left) || 0) - NB_MARGIN_SIDE;
+    if (maxW > 80 && el.offsetWidth > maxW) el.style.width = maxW + 'px';
+    clearTimeout(nbSaveTimer); nbSaveTimer = setTimeout(() => saveAllNotes(sectionId), 500);
+  }).observe(el);
+
+  el.addEventListener('focusin',  () => {
+    let z = 10; document.querySelectorAll('.nb-note').forEach(x => { const nz = parseInt(x.style.zIndex) || 10; if (nz > z) z = nz; });
+    el.style.zIndex = String(z + 1); el.style.borderColor = 'var(--green)'; el.style.boxShadow = '0 0 0 2px rgba(45,143,94,0.12),var(--shadow)';
   });
-  content.addEventListener('keyup',  () => nbSaveLastRange());
-  content.addEventListener('mouseup', () => nbSaveLastRange());
-  content.addEventListener('focus',  () => nbSaveLastRange());
-
-  // Track width resize — stop at page margin AND neighbouring notes
-  const ro=new ResizeObserver(()=>{
-    const canvas=document.getElementById('nbCanvas'); if(!canvas) return;
-    const noteLeft=parseInt(el.style.left)||0;
-    let maxW=canvas.offsetWidth - noteLeft - NB_MARGIN_SIDE;
-    // Also stop at left edge of any note to the right
-    canvas.querySelectorAll('.nb-note').forEach(other=>{
-      if(other===el) return;
-      const ol=parseInt(other.style.left)||0;
-      if(ol > noteLeft) {
-        const gap=ol - noteLeft - NB_NOTE_GAP;
-        if(gap < maxW) maxW=gap;
-      }
-    });
-    if(maxW>80 && el.offsetWidth>maxW) el.style.width=maxW+'px';
-    clearTimeout(nbSaveTimer);
-    nbSaveTimer=setTimeout(()=>saveAllNotes(sectionId),500);
-  });
-  ro.observe(el);
-
-  // Focus highlight
-  el.addEventListener('focusin',()=>{
-    let maxZ=10;
-    document.querySelectorAll('.nb-note').forEach(n=>{const z=parseInt(n.style.zIndex)||10;if(z>maxZ)maxZ=z;});
-    el.style.zIndex=String(maxZ+1);el.style.borderColor='var(--green)';el.style.boxShadow='0 0 0 2px rgba(45,143,94,0.12),var(--shadow)';});
-  el.addEventListener('focusout',()=>{el.style.borderColor='var(--border)';el.style.boxShadow='var(--shadow)';});
-
+  el.addEventListener('focusout', () => { el.style.borderColor = 'var(--border)'; el.style.boxShadow = 'var(--shadow)'; });
   return el;
 }
 
-// Margin constants
-const NB_MARGIN_TOP  = 20; // fixed top border — matches default note placement
-const NB_MARGIN_SIDE = 36; // fixed left/right border for the notes canvas
-const NB_NOTE_GAP    = 10;
-
-function nbResolveOverlaps(movedEl) {
-  const canvas=document.getElementById('nbCanvas'); if(!canvas) return;
-  const notes=[...canvas.querySelectorAll('.nb-note')];
-  if(notes.length<2) { updateCanvasHeight(); return; }
-  const canvasW=canvas.offsetWidth;
-  const mover=movedEl||notes[notes.length-1];
-
-  let changed=true, iters=0;
-  while(changed && iters++<40) {
-    changed=false;
-    const ml=parseInt(mover.style.left)||0, mt=parseInt(mover.style.top)||0;
-    const mw=mover.offsetWidth, mh=mover.offsetHeight;
-
-    for(let i=0;i<notes.length;i++) {
-      const other=notes[i];
-      if(other===mover) continue;
-      const ol=parseInt(other.style.left)||0, ot=parseInt(other.style.top)||0;
-      const ow=other.offsetWidth, oh=other.offsetHeight;
-
-      // Calculate actual overlap amounts
-      const ox=Math.min(ml+mw, ol+ow)+NB_NOTE_GAP - Math.max(ml, ol);
-      const oy=Math.min(mt+mh, ot+oh)+NB_NOTE_GAP - Math.max(mt, ot);
-      if(ox<=0 || oy<=0) continue; // no overlap
-
-      // Determine where mover centre is relative to other's centre
-      const mcx=ml+mw/2, mcy=mt+mh/2;
-      const ocx=ol+ow/2, ocy=ot+oh/2;
-      const dx=mcx-ocx, dy=mcy-ocy; // positive = mover is to the right/below
-
-      // Push in the direction the user placed it (dx/dy tells us)
-      if(Math.abs(dx) >= Math.abs(dy)) {
-        // Horizontal relationship — push left or right
-        if(dx>=0) {
-          // mover is to the right of other → push mover further right
-          const target=ol+ow+NB_NOTE_GAP;
-          if(target+mw <= canvasW-NB_MARGIN_SIDE) { mover.style.left=target+'px'; changed=true; }
-          else { mover.style.top=(ot+oh+NB_NOTE_GAP)+'px'; changed=true; } // no room right → push down
-        } else {
-          // mover is to the left of other → push mover further left
-          const target=ol-mw-NB_NOTE_GAP;
-          if(target >= NB_MARGIN_SIDE) { mover.style.left=target+'px'; changed=true; }
-          else { mover.style.top=(ot+oh+NB_NOTE_GAP)+'px'; changed=true; }
-        }
-      } else {
-        // Vertical relationship — push up or down
-        if(dy>=0) {
-          // mover is below other → push down
-          mover.style.top=(ot+oh+NB_NOTE_GAP)+'px'; changed=true;
-        } else {
-          // mover is above other → push up
-          const target=ot-mh-NB_NOTE_GAP;
-          mover.style.top=Math.max(NB_MARGIN_TOP, target)+'px'; changed=true;
-        }
-      }
-      break; // re-evaluate after each move
-    }
-  }
-
-  // Final clamp to page margins
-  let fl=parseInt(mover.style.left)||0;
-  let ft=parseInt(mover.style.top)||0;
-  fl=Math.max(NB_MARGIN_SIDE, Math.min(fl, canvasW-mover.offsetWidth-NB_MARGIN_SIDE));
-  ft=Math.max(NB_MARGIN_TOP, ft);
-  mover.style.left=fl+'px';
-  mover.style.top=ft+'px';
-
-  updateCanvasHeight();
-}
-
-function updateCanvasHeight() {
-  const canvas=document.getElementById('nbCanvas'); if(!canvas) return;
-  let maxBottom=500;
-  canvas.querySelectorAll('.nb-note').forEach(n=>{
-    const b=(parseInt(n.style.top)||0)+n.offsetHeight+40;
-    if(b>maxBottom) maxBottom=b;
-  });
-  canvas.style.minHeight=maxBottom+'px';
-}
-
-function saveAllNotes(sectionId) {
-  const sections=loadNotes();
-  const s=sections.find(x=>x.id===sectionId); if(!s) return;
-  const canvas=document.getElementById('nbCanvas'); if(!canvas) return;
-  const notes=[];
-  const cw = canvas.offsetWidth || 1200; // canvas width at save time
-  canvas.querySelectorAll('.nb-note').forEach(el=>{
-    const id=el.dataset.id;
-    const c=el.querySelector('.nb-note-content');
-    const xPx = parseInt(el.style.left)||20;
-    const wPx = el.offsetWidth||NOTE_DEFAULT_W;
-    notes.push({
-      id, content:c?c.innerHTML:'',
-      x:  xPx,                           // keep px for backward compat
-      y:  parseInt(el.style.top)||20,
-      w:  wPx,
-      xPct: xPx / cw,                    // percentage of canvas width
-      wPct: wPx / cw,
-      createdAt:Date.now()
-    });
-  });
-  s.notes=notes;
-  saveNotes(sections);
-}
-
+/* ═══════════════════════════════════════════════════════════
+   ADD / DELETE
+═══════════════════════════════════════════════════════════ */
 function nbAddNote() {
-  if(!currentNoteSection){showToast('Select a section first');return;}
+  if (!currentNoteSection) { showToast('Select a section first'); return; }
   nbPushUndo();
-  const canvas=document.getElementById('nbCanvas');
-  const existing=canvas.querySelectorAll('.nb-note');
-  const nw=nbNoteWidth();  // one-third of usable canvas width
-  const GAP=10;            // 10px between notes
-  const MARGIN=36; // aligns with section header padding
-  let x=MARGIN, y=20;
-  if(existing.length) {
-    const last=existing[existing.length-1];
-    const lx=parseInt(last.style.left)||MARGIN;
-    const lw=last.offsetWidth||nw;
-    const canvasW=canvas.offsetWidth;
-    // Fits to the right if next note ends before right margin (36px from edge)
-    if(lx+lw+GAP+nw <= canvasW-MARGIN) {
-      // Place to the right with 10px gap
-      x=lx+lw+GAP; y=parseInt(last.style.top)||20;
+  const canvas = document.getElementById('nbCanvas');
+  const existing = canvas.querySelectorAll('.nb-note');
+  const nw = nbNoteWidth(), M = NB_MARGIN_SIDE;
+  let x = M, y = NB_MARGIN_TOP;
+  if (existing.length) {
+    const last = existing[existing.length - 1];
+    const lx = parseInt(last.style.left) || M, lw = last.offsetWidth || nw;
+    if (lx + lw + NB_NOTE_GAP + nw <= canvas.offsetWidth - M) {
+      x = lx + lw + NB_NOTE_GAP; y = parseInt(last.style.top) || NB_MARGIN_TOP;
     } else {
-      // Wrap to next row below all current notes
-      let maxBottom=0;
-      existing.forEach(n=>{const b=(parseInt(n.style.top)||0)+n.offsetHeight; if(b>maxBottom)maxBottom=b;});
-      x=MARGIN; y=maxBottom+NB_MARGIN_TOP;
+      let maxB = 0; existing.forEach(n => { const b = (parseInt(n.style.top) || 0) + n.offsetHeight; if (b > maxB) maxB = b; });
+      x = M; y = maxB + NB_MARGIN_TOP;
     }
   }
-  const sections=loadNotes();
-  const s=sections.find(sec=>sec.id===currentNoteSection); if(!s) return;
-  const newNote={id:'n'+Date.now(),content:'',x,y,w:nw,createdAt:Date.now()};
-  if(!s.notes) s.notes=[];
-  s.notes.push(newNote);
-  saveNotes(sections);
-  const el=createNoteEl(newNote,currentNoteSection);
-  canvas.appendChild(el);
-  updateCanvasHeight();
-  const c=el.querySelector('.nb-note-content');
-  if(c){c.focus();lastFocusedNote=c;}
+  const sections = loadNotes();
+  const s = sections.find(sec => sec.id === currentNoteSection); if (!s) return;
+  const newNote = { id: 'n' + Date.now(), content: '', x, y, w: nw, createdAt: Date.now() };
+  if (!s.notes) s.notes = [];
+  s.notes.push(newNote); saveNotes(sections);
+  const elNew = createNoteEl(newNote, currentNoteSection);
+  canvas.appendChild(elNew); updateCanvasHeight();
+  const c = elNew.querySelector('.nb-note-content');
+  if (c) { c.focus(); lastFocusedNote = c; }
 }
-
 function nbDeleteNote(noteId) {
   nbPushUndo();
-  const el=document.querySelector('.nb-note[data-id="'+noteId+'"]'); if(!el) return;
-  const canvas=document.getElementById('nbCanvas');
-  if(canvas.querySelectorAll('.nb-note').length<=1){
-    const c=el.querySelector('.nb-note-content');
-    if(c){c.innerHTML='';c.focus();lastFocusedNote=c;}
-    saveAllNotes(currentNoteSection);
-    return;
+  const el = document.querySelector('.nb-note[data-id="' + noteId + '"]'); if (!el) return;
+  const canvas = document.getElementById('nbCanvas');
+  if (canvas.querySelectorAll('.nb-note').length <= 1) {
+    const c = el.querySelector('.nb-note-content');
+    if (c) { c.innerHTML = ''; c.focus(); lastFocusedNote = c; }
+    saveAllNotes(currentNoteSection); return;
   }
-  el.remove();
-  saveAllNotes(currentNoteSection);
-  showToast('Note removed');
+  el.remove(); saveAllNotes(currentNoteSection); showToast('Note removed');
 }
 
-// ── Undo ──────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════
+   UNDO
+═══════════════════════════════════════════════════════════ */
 function nbPushUndo() {
-  if(!currentNoteSection) return;
-  const sections=loadNotes();
-  const s=sections.find(x=>x.id===currentNoteSection); if(!s) return;
-  nbUndoStack.push(JSON.stringify(s.notes||[]));
-  if(nbUndoStack.length>NB_UNDO_MAX) nbUndoStack.shift();
+  if (!currentNoteSection) return;
+  const sections = loadNotes();
+  const s = sections.find(x => x.id === currentNoteSection); if (!s) return;
+  nbUndoStack.push(JSON.stringify(s.notes || []));
+  if (nbUndoStack.length > NB_UNDO_MAX) nbUndoStack.shift();
 }
-
 function nbUndo() {
-  if(!currentNoteSection||!nbUndoStack.length){showToast('Nothing to undo');return;}
-  const snapshot=nbUndoStack.pop();
-  const sections=loadNotes();
-  const s=sections.find(x=>x.id===currentNoteSection); if(!s) return;
-  s.notes=JSON.parse(snapshot);
-  saveNotes(sections);
-  renderNoteEditor(currentNoteSection);
-  showToast('Undone ✓');
+  if (!currentNoteSection || !nbUndoStack.length) { showToast('Nothing to undo'); return; }
+  const snapshot = nbUndoStack.pop();
+  const sections = loadNotes();
+  const s = sections.find(x => x.id === currentNoteSection); if (!s) return;
+  s.notes = JSON.parse(snapshot); saveNotes(sections);
+  renderNoteEditor(currentNoteSection); showToast('Undone \u2713');
 }
-
-document.addEventListener('keydown',function(e){
-  if((e.ctrlKey||e.metaKey)&&e.key==='z'){
-    const nv=document.getElementById('view-notes');
-    if(nv&&!nv.classList.contains('hidden')&&nbUndoStack.length>0){
-      const active=document.activeElement;
-      if(!active||active.contentEditable!=='true'){e.preventDefault();nbUndo();}
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    const nv = document.getElementById('view-notes');
+    if (nv && !nv.classList.contains('hidden') && nbUndoStack.length > 0) {
+      const active = document.activeElement;
+      if (!active || active.contentEditable !== 'true') { e.preventDefault(); nbUndo(); }
     }
   }
 });
 
-// ── Toolbar actions ────────────────────────────
-function nbSyncFontSel() {
-  // Read the font size at the current cursor/selection and update the dropdown
-  try {
-    const sel=window.getSelection();
-    if(!sel||!sel.rangeCount) return;
-    let node=sel.focusNode;
-    if(node&&node.nodeType===3) node=node.parentElement;
-    if(!node) return;
-    const computed=window.getComputedStyle(node).fontSize;
-    const px=Math.round(parseFloat(computed));
-    const sel2=document.getElementById('nbFontSizeSel');
-    if(!sel2) return;
-    // Find closest option
-    const opts=[...sel2.options].map(o=>parseInt(o.value)).filter(Boolean);
-    const closest=opts.reduce((a,b)=>Math.abs(b-px)<Math.abs(a-px)?b:a,opts[0]);
-    sel2.value=String(closest);
-  } catch(e){}
-}
-
-function nbFontSize(size) {
-  if(!size) return;
-  if(lastFocusedNote) lastFocusedNote.focus();
-  const sel=window.getSelection();
-  const hasSelection=sel&&sel.rangeCount>0&&!sel.isCollapsed;
-  if(hasSelection) {
-    // Apply to selected text: wrap in span with font-size
-    document.execCommand('fontSize',false,'7');
-    // Replace browser font element with clean span
-    lastFocusedNote.querySelectorAll('font[size="7"]').forEach(f=>{
-      const span=document.createElement('span');
-      span.style.fontSize=size+'px';
-      span.innerHTML=f.innerHTML;
-      f.replaceWith(span);
-    });
-  } else {
-    // No selection — use CSS font-size on the note content area directly
-    // This sets the default size for new text without inserting junk characters
-    if(lastFocusedNote) lastFocusedNote.style.fontSize=size+'px';
+/* ═══════════════════════════════════════════════════════════
+   OVERLAP RESOLUTION
+═══════════════════════════════════════════════════════════ */
+function nbResolveOverlaps(movedEl) {
+  const canvas = document.getElementById('nbCanvas'); if (!canvas) return;
+  const notes  = [...canvas.querySelectorAll('.nb-note')];
+  if (notes.length < 2) { updateCanvasHeight(); return; }
+  const cw    = canvas.offsetWidth;
+  const mover = movedEl || notes[notes.length - 1];
+  let changed = true, iters = 0;
+  while (changed && iters++ < 40) {
+    changed = false;
+    const ml = parseInt(mover.style.left) || 0, mt = parseInt(mover.style.top) || 0;
+    const mw = mover.offsetWidth, mh = mover.offsetHeight;
+    for (const other of notes) {
+      if (other === mover) continue;
+      const ol = parseInt(other.style.left) || 0, ot = parseInt(other.style.top) || 0;
+      const ow = other.offsetWidth, oh = other.offsetHeight;
+      const ox = Math.min(ml + mw, ol + ow) + NB_NOTE_GAP - Math.max(ml, ol);
+      const oy = Math.min(mt + mh, ot + oh) + NB_NOTE_GAP - Math.max(mt, ot);
+      if (ox <= 0 || oy <= 0) continue;
+      const dx = (ml + mw / 2) - (ol + ow / 2), dy = (mt + mh / 2) - (ot + oh / 2);
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        if (dx >= 0) { const t = ol + ow + NB_NOTE_GAP; mover.style.left = (t + mw <= cw - NB_MARGIN_SIDE ? t : ol - mw - NB_NOTE_GAP) + 'px'; }
+        else         { const t = ol - mw - NB_NOTE_GAP; mover.style.left = (t >= NB_MARGIN_SIDE ? t : ol + ow + NB_NOTE_GAP) + 'px'; }
+      } else {
+        mover.style.top = (dy >= 0 ? ot + oh + NB_NOTE_GAP : Math.max(NB_MARGIN_TOP, ot - mh - NB_NOTE_GAP)) + 'px';
+      }
+      changed = true; break;
+    }
   }
-  // Update selector
-  const sizeSel=document.getElementById('nbFontSizeSel');
-  if(sizeSel) sizeSel.value=size;
+  mover.style.left = Math.max(NB_MARGIN_SIDE, Math.min(parseInt(mover.style.left) || 0, cw - mover.offsetWidth - NB_MARGIN_SIDE)) + 'px';
+  mover.style.top  = Math.max(NB_MARGIN_TOP, parseInt(mover.style.top) || 0) + 'px';
+  updateCanvasHeight();
 }
 
-
-// ── Split a single <li> out of its <ul> into a new <ul> with a given class ──
-// ══════════════════════════════════════════════════════════════════════════
-//  NOTES LIST ENGINE — OneNote-style bullet / numbered / todo management
-// ══════════════════════════════════════════════════════════════════════════
-
-/**
- * nbGetCursorLi()
- * Returns the single <li> the cursor is inside, or null.
- */
-function nbGetCursorLi() {
+/* ═══════════════════════════════════════════════════════════
+   TOOLBAR — FONT
+═══════════════════════════════════════════════════════════ */
+function nbSyncFontSel() {
+  try {
+    const sel = window.getSelection(); if (!sel || !sel.rangeCount) return;
+    let node = sel.focusNode; if (node && node.nodeType === 3) node = node.parentElement; if (!node) return;
+    const px   = Math.round(parseFloat(window.getComputedStyle(node).fontSize));
+    const sel2 = document.getElementById('nbFontSizeSel'); if (!sel2) return;
+    const opts = [...sel2.options].map(o => parseInt(o.value)).filter(Boolean);
+    sel2.value = String(opts.reduce((a, b) => Math.abs(b - px) < Math.abs(a - px) ? b : a, opts[0]));
+  } catch(e) {}
+}
+function nbFontSize(size) {
+  if (!size) return;
+  if (lastFocusedNote) lastFocusedNote.focus();
   const sel = window.getSelection();
-  if (!sel || !sel.rangeCount) return null;
-  let node = sel.anchorNode;
-  if (node && node.nodeType === 3) node = node.parentElement;
-  return node ? node.closest('li') : null;
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+    document.execCommand('fontSize', false, '7');
+    lastFocusedNote && lastFocusedNote.querySelectorAll('font[size="7"]').forEach(f => {
+      const span = document.createElement('span'); span.style.fontSize = size + 'px'; span.innerHTML = f.innerHTML; f.replaceWith(span);
+    });
+  } else if (lastFocusedNote) {
+    lastFocusedNote.style.fontSize = size + 'px';
+  }
+  const ss = document.getElementById('nbFontSizeSel'); if (ss) ss.value = size;
 }
 
-/**
- * nbGetSelectedLis()
- * Returns ALL <li> elements touched by the current selection (1..n).
- * If the selection is collapsed, returns just the li at cursor (or []).
- */
-// ══════════════════════════════════════════════════════════════════════════
-//  NOTES — Cursor tracking (survives toolbar button blur)
-// ══════════════════════════════════════════════════════════════════════════
-let _lastRange  = null;
-
+/* ═══════════════════════════════════════════════════════════
+   CURSOR TRACKING  (survives toolbar button blur)
+═══════════════════════════════════════════════════════════ */
+let _lastRange = null;
 function nbSaveLastRange() {
   const sel = window.getSelection();
-  if (sel && sel.rangeCount) {
-    try { _lastRange = sel.getRangeAt(0).cloneRange(); } catch(e) {}
-  }
+  if (sel && sel.rangeCount) try { _lastRange = sel.getRangeAt(0).cloneRange(); } catch(e) {}
 }
 function nbRestoreLastRange() {
   if (!_lastRange) return false;
-  try {
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(_lastRange.cloneRange());
-    return true;
-  } catch(e) { return false; }
+  try { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(_lastRange.cloneRange()); return true; } catch(e) { return false; }
 }
 function nbGetNote() {
   if (lastFocusedNote && document.contains(lastFocusedNote)) {
@@ -3662,311 +3475,221 @@ function nbGetNote() {
   }
   const first = document.querySelector('.nb-note-content');
   if (!first) { showToast('Click inside a note first'); return null; }
-  first.focus();
-  lastFocusedNote = first;
+  first.focus(); lastFocusedNote = first;
   return first;
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-//  NOTES — List helpers
-// ══════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════
+   LIST ENGINE  — Word / OneNote behaviour
+   Rules:
+   1. All list operations use native execCommand so Undo/Backspace/Enter work natively.
+   2. Toolbar buttons use onmousedown+preventDefault so the note never blurs.
+   3. Before calling nbGetNote(), we snapshot the current selection (preRange).
+      After nbGetNote() (which may restore a stale range), we restore preRange.
+      This ensures we always operate on where the user's cursor actually is.
+   4. An empty <li> left by double-Enter is treated as plain text — we remove it
+      and insert a clean <p> before creating any new list, preventing merge.
+   5. When creating a list adjacent to another list, we use direct DOM (not
+      execCommand) to prevent the browser merging the two lists.
+═══════════════════════════════════════════════════════════ */
+
 function nbGetSelectedLis() {
-  const sel = window.getSelection();
-  if (!sel || !sel.rangeCount) return [];
+  const sel = window.getSelection(); if (!sel || !sel.rangeCount) return [];
   const range = sel.getRangeAt(0);
-  let ancestor = range.commonAncestorContainer;
-  if (ancestor.nodeType === 3) ancestor = ancestor.parentElement;
-  const note = ancestor ? ancestor.closest('.nb-note-content') : null;
-  if (!note) return [];
-  if (sel.isCollapsed) {
-    const li = ancestor.closest('li');
-    return li ? [li] : [];
-  }
+  let anc = range.commonAncestorContainer;
+  if (anc.nodeType === 3) anc = anc.parentElement;
+  const note = anc ? anc.closest('.nb-note-content') : null; if (!note) return [];
+  if (sel.isCollapsed) { const li = anc.closest('li'); return li ? [li] : []; }
   return [...note.querySelectorAll('li')].filter(li => range.intersectsNode(li));
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-//  NOTES — Toolbar actions (native execCommand = Word behaviour)
-// ══════════════════════════════════════════════════════════════════════════
+// Exit an empty <li> cleanly — removes it and places cursor in a new <p>
+function _exitEmptyLi(cursorLi, note) {
+  const list = cursorLi.parentElement;
+  const lpar = list ? list.parentNode : null;
+  if (!list || !lpar) return false;
+  list.removeChild(cursorLi);
+  const p = document.createElement('p'); p.innerHTML = '<br>';
+  if (!list.children.length) lpar.replaceChild(p, list);
+  else lpar.insertBefore(p, list.nextSibling);
+  const r = document.createRange(); r.setStart(p, 0); r.collapse(true);
+  const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  return true;
+}
+
+// Create a new isolated list at the cursor's current block
+// Uses direct DOM when there are adjacent siblings (prevents browser merge)
+function _createIsolatedList(tagName, listClass, note, sel) {
+  let node = sel.anchorNode;
+  if (node && node.nodeType === 3) node = node.parentElement;
+  let block = node;
+  while (block && block.parentNode !== note) block = block.parentNode;
+  if (!block || block === note) block = null;
+
+  const list = document.createElement(tagName);
+  if (listClass) list.classList.add(listClass);
+  const li = document.createElement('li');
+  li.innerHTML = (block && block.innerHTML && block.innerHTML !== '<br>') ? block.innerHTML : '<br>';
+  list.appendChild(li);
+
+  if (block) note.replaceChild(list, block);
+  else       note.appendChild(list);
+
+  const r = document.createRange(); r.selectNodeContents(li); r.collapse(false);
+  sel.removeAllRanges(); sel.addRange(r);
+}
+
 function nbInsertBullet() {
-  // Capture current selection BEFORE nbGetNote() potentially restores a stale range
-  const preSel = window.getSelection();
-  const preRange = (preSel && preSel.rangeCount) ? preSel.getRangeAt(0).cloneRange() : null;
-
+  // 1. Snapshot selection before any focus change
+  const preSel   = window.getSelection();
+  const preRange = preSel && preSel.rangeCount ? preSel.getRangeAt(0).cloneRange() : null;
   const note = nbGetNote(); if (!note) return;
+  if (preRange) try { preSel.removeAllRanges(); preSel.addRange(preRange); } catch(e) {}
 
-  // Restore to what user actually had selected, not what nbGetNote restored
-  if (preRange) {
-    try { preSel.removeAllRanges(); preSel.addRange(preRange); } catch(e) {}
-  }
+  const sel = window.getSelection(); if (!sel) return;
+  let anc = sel.anchorNode; if (anc && anc.nodeType === 3) anc = anc.parentElement;
+  const curLi = anc ? anc.closest('li') : null;
+  const isEmpty = curLi && (curLi.innerText || curLi.textContent || '').trim() === '';
 
-  // Detect empty <li> left by double-Enter — treat as plain text
-  let _an = window.getSelection() && window.getSelection().anchorNode;
-  if (_an && _an.nodeType === 3) _an = _an.parentElement;
-  const _curLi = _an ? _an.closest('li') : null;
-  const _liEmpty = _curLi && (_curLi.innerText||_curLi.textContent||'').trim() === '';
-  if (_curLi && _liEmpty) {
-    const _list = _curLi.parentElement, _lpar = _list ? _list.parentNode : null;
-    if (_list && _lpar) {
-      _list.removeChild(_curLi);
-      const _p = document.createElement('p'); _p.innerHTML = '<br>';
-      if (!_list.children.length) { _lpar.replaceChild(_p, _list); }
-      else { _lpar.insertBefore(_p, _list.nextSibling); }
-      const _r = document.createRange(); _r.setStart(_p,0); _r.collapse(true);
-      const _s = window.getSelection(); _s.removeAllRanges(); _s.addRange(_r);
-    }
-  }
-  const lis = (_curLi && !_liEmpty) ? nbGetSelectedLis() : [];
+  if (curLi && isEmpty) { _exitEmptyLi(curLi, note); }
 
+  const lis = (curLi && !isEmpty) ? nbGetSelectedLis() : [];
   if (lis.length) {
+    // In a list — strip todo class, then toggle bullet
     lis.forEach(li => { if (li.parentElement) li.parentElement.classList.remove('nb-todo-list'); });
     document.execCommand('insertUnorderedList');
   } else {
-    const sel = window.getSelection();
-    if (!sel || !sel.rangeCount) return;
-    let curNode = sel.anchorNode;
-    if (curNode && curNode.nodeType === 3) curNode = curNode.parentElement;
-    let block = curNode;
-    while (block && block.parentNode !== note) block = block.parentNode;
-
-    if (block && (block.previousElementSibling || block.nextElementSibling)) {
-      const ul = document.createElement('ul');
-      const li = document.createElement('li');
-      li.innerHTML = (!block.innerHTML || block.innerHTML === '<br>') ? '<br>' : block.innerHTML;
-      ul.appendChild(li);
-      note.replaceChild(ul, block);
-      const r = document.createRange();
-      r.selectNodeContents(li); r.collapse(false);
-      sel.removeAllRanges(); sel.addRange(r);
+    // Plain text — create isolated list
+    if (sel.anchorNode && note.contains(sel.anchorNode)) {
+      let n2 = sel.anchorNode; if (n2.nodeType === 3) n2 = n2.parentElement;
+      let block = n2; while (block && block.parentNode !== note) block = block.parentNode;
+      if (block && (block.previousElementSibling || block.nextElementSibling)) {
+        _createIsolatedList('ul', null, note, sel);
+      } else {
+        document.execCommand('insertUnorderedList');
+      }
     } else {
-      document.execCommand('insertUnorderedList');
+      _createIsolatedList('ul', null, note, sel);
     }
   }
-  clearTimeout(nbSaveTimer);
-  nbSaveTimer = setTimeout(() => saveAllNotes(currentNoteSection), 400);
+  clearTimeout(nbSaveTimer); nbSaveTimer = setTimeout(() => saveAllNotes(currentNoteSection), 400);
 }
+
 function nbInsertNumbered() {
-  const preSel = window.getSelection();
-  const preRange = (preSel && preSel.rangeCount) ? preSel.getRangeAt(0).cloneRange() : null;
-
+  const preSel   = window.getSelection();
+  const preRange = preSel && preSel.rangeCount ? preSel.getRangeAt(0).cloneRange() : null;
   const note = nbGetNote(); if (!note) return;
+  if (preRange) try { preSel.removeAllRanges(); preSel.addRange(preRange); } catch(e) {}
 
-  if (preRange) {
-    try { preSel.removeAllRanges(); preSel.addRange(preRange); } catch(e) {}
-  }
+  const sel = window.getSelection(); if (!sel) return;
+  let anc = sel.anchorNode; if (anc && anc.nodeType === 3) anc = anc.parentElement;
+  const curLi = anc ? anc.closest('li') : null;
+  const isEmpty = curLi && (curLi.innerText || curLi.textContent || '').trim() === '';
 
-  // Detect empty <li> left by double-Enter — treat as plain text
-  let _an = window.getSelection() && window.getSelection().anchorNode;
-  if (_an && _an.nodeType === 3) _an = _an.parentElement;
-  const _curLi = _an ? _an.closest('li') : null;
-  const _liEmpty = _curLi && (_curLi.innerText||_curLi.textContent||'').trim() === '';
-  if (_curLi && _liEmpty) {
-    const _list = _curLi.parentElement, _lpar = _list ? _list.parentNode : null;
-    if (_list && _lpar) {
-      _list.removeChild(_curLi);
-      const _p = document.createElement('p'); _p.innerHTML = '<br>';
-      if (!_list.children.length) { _lpar.replaceChild(_p, _list); }
-      else { _lpar.insertBefore(_p, _list.nextSibling); }
-      const _r = document.createRange(); _r.setStart(_p,0); _r.collapse(true);
-      const _s = window.getSelection(); _s.removeAllRanges(); _s.addRange(_r);
-    }
-  }
-  const lis = (_curLi && !_liEmpty) ? nbGetSelectedLis() : [];
+  if (curLi && isEmpty) { _exitEmptyLi(curLi, note); }
 
+  const lis = (curLi && !isEmpty) ? nbGetSelectedLis() : [];
   if (lis.length) {
     document.execCommand('insertOrderedList');
   } else {
-    const sel = window.getSelection();
-    if (!sel || !sel.rangeCount) return;
-    let curNode = sel.anchorNode;
-    if (curNode && curNode.nodeType === 3) curNode = curNode.parentElement;
-    let block = curNode;
-    while (block && block.parentNode !== note) block = block.parentNode;
-
+    let n2 = window.getSelection().anchorNode; if (n2 && n2.nodeType === 3) n2 = n2.parentElement;
+    let block = n2; while (block && block.parentNode !== note) block = block.parentNode;
     if (block && (block.previousElementSibling || block.nextElementSibling)) {
-      const ol = document.createElement('ol');
-      const li = document.createElement('li');
-      li.innerHTML = (!block.innerHTML || block.innerHTML === '<br>') ? '<br>' : block.innerHTML;
-      ol.appendChild(li);
-      note.replaceChild(ol, block);
-      const r = document.createRange();
-      r.selectNodeContents(li); r.collapse(false);
-      sel.removeAllRanges(); sel.addRange(r);
+      _createIsolatedList('ol', null, note, window.getSelection());
     } else {
       document.execCommand('insertOrderedList');
     }
   }
-  clearTimeout(nbSaveTimer);
-  nbSaveTimer = setTimeout(() => saveAllNotes(currentNoteSection), 400);
+  clearTimeout(nbSaveTimer); nbSaveTimer = setTimeout(() => saveAllNotes(currentNoteSection), 400);
 }
+
 function nbInsertTodo() {
-  // Capture selection BEFORE nbGetNote() restores a stale range
-  const preSel = window.getSelection();
-  const preRange = (preSel && preSel.rangeCount) ? preSel.getRangeAt(0).cloneRange() : null;
-
+  const preSel   = window.getSelection();
+  const preRange = preSel && preSel.rangeCount ? preSel.getRangeAt(0).cloneRange() : null;
   const note = nbGetNote(); if (!note) return;
+  if (preRange) try { preSel.removeAllRanges(); preSel.addRange(preRange); } catch(e) {}
 
-  // Restore actual user selection
-  if (preRange) {
-    try { preSel.removeAllRanges(); preSel.addRange(preRange); } catch(e) {}
-  }
+  const sel = window.getSelection(); if (!sel) return;
+  let anc = sel.anchorNode; if (anc && anc.nodeType === 3) anc = anc.parentElement;
+  const curLi = anc ? anc.closest('li') : null;
+  const isEmpty = curLi && (curLi.innerText || curLi.textContent || '').trim() === '';
 
-  const sel = window.getSelection();
-  if (!sel || !sel.rangeCount) return;
+  // Empty <li> → exit list, then create todo below
+  if (curLi && isEmpty) { _exitEmptyLi(curLi, note); }
 
-  // Find the li the cursor is in (if any)
-  let anchorNode = sel.anchorNode;
-  if (anchorNode && anchorNode.nodeType === 3) anchorNode = anchorNode.parentElement;
-  const cursorLi = anchorNode ? anchorNode.closest('li') : null;
+  const lis = (curLi && !isEmpty) ? nbGetSelectedLis() : [];
 
-  // KEY FIX: treat an empty <li> as "not in a list" — 
-  // it means the user pressed Enter on an empty bullet to exit, 
-  // but the browser left the cursor in the empty li instead of a new <p>.
-  // We exit the list first, then create a fresh todo below.
-  const liIsEmpty = cursorLi && (cursorLi.innerText || cursorLi.textContent || '').trim() === '';
-
-  if (cursorLi && !liIsEmpty) {
-    // Cursor is in a real, non-empty list item
-    const lis = nbGetSelectedLis();
-    if (!lis.length) return;
-
-    const allTodo = lis.every(li => li.parentElement &&
-                                    li.parentElement.classList.contains('nb-todo-list'));
+  if (lis.length) {
+    // Inside existing list items
+    const allTodo = lis.every(li => li.parentElement && li.parentElement.classList.contains('nb-todo-list'));
     if (allTodo) {
-      // Toggle OFF — remove todo class
+      // Toggle OFF
       lis.forEach(li => { if (li.parentElement) li.parentElement.classList.remove('nb-todo-list'); });
     } else {
-      // Convert to todo
-      const parentTag = lis[0].parentElement ? lis[0].parentElement.tagName : '';
-      if (parentTag === 'OL') document.execCommand('insertUnorderedList');
-      nbGetSelectedLis().forEach(li => {
-        const p = li.parentElement;
-        if (p && p.tagName === 'UL') p.classList.add('nb-todo-list');
-      });
+      // Convert to todo — if OL, convert to UL first
+      if (lis[0].parentElement && lis[0].parentElement.tagName === 'OL') document.execCommand('insertUnorderedList');
+      nbGetSelectedLis().forEach(li => { const p = li.parentElement; if (p && p.tagName === 'UL') p.classList.add('nb-todo-list'); });
     }
   } else {
-    // Cursor is in plain text OR in an empty li — create a fresh isolated todo list
-
-    // If stuck in an empty li, remove it and insert a clean <p> first
-    if (cursorLi && liIsEmpty) {
-      const list = cursorLi.parentElement;
-      const listPar = list ? list.parentNode : null;
-      if (list && listPar) {
-        list.removeChild(cursorLi);
-        const p = document.createElement('p');
-        p.innerHTML = '<br>';
-        if (list.children.length === 0) {
-          listPar.replaceChild(p, list);
-        } else {
-          listPar.insertBefore(p, list.nextSibling);
-        }
-        // Move cursor into the new p so block-finding below works correctly
-        const r0 = document.createRange();
-        r0.setStart(p, 0); r0.collapse(true);
-        sel.removeAllRanges(); sel.addRange(r0);
-      }
-    }
-
-    // Now find the block the cursor is in and wrap it as a todo list
-    let curNode = sel.anchorNode;
-    if (curNode && curNode.nodeType === 3) curNode = curNode.parentElement;
-    let block = curNode;
-    while (block && block.parentNode !== note) block = block.parentNode;
-
-    if (!block || block === note) {
-      // Fallback: append to end
-      const ul = document.createElement('ul');
-      ul.classList.add('nb-todo-list');
-      const li = document.createElement('li');
-      li.innerHTML = '<br>';
-      ul.appendChild(li);
-      note.appendChild(ul);
-      const r = document.createRange();
-      r.selectNodeContents(li); r.collapse(false);
-      sel.removeAllRanges(); sel.addRange(r);
-    } else {
-      // Create todo list via direct DOM — never merges with adjacent lists
-      const ul = document.createElement('ul');
-      ul.classList.add('nb-todo-list');
-      const li = document.createElement('li');
-      li.innerHTML = (!block.innerHTML || block.innerHTML === '<br>') ? '<br>' : block.innerHTML;
-      ul.appendChild(li);
-      note.replaceChild(ul, block);
-      const r = document.createRange();
-      r.selectNodeContents(li); r.collapse(false);
-      sel.removeAllRanges(); sel.addRange(r);
-    }
+    // Plain text (or just exited empty li) — always use isolated DOM creation
+    _createIsolatedList('ul', 'nb-todo-list', note, window.getSelection());
   }
-
-  clearTimeout(nbSaveTimer);
-  nbSaveTimer = setTimeout(() => saveAllNotes(currentNoteSection), 400);
+  clearTimeout(nbSaveTimer); nbSaveTimer = setTimeout(() => saveAllNotes(currentNoteSection), 400);
 }
-function nbCreateListAtCursor(tagName, listClass) {
-  const cmd = tagName === 'ol' ? 'insertOrderedList' : 'insertUnorderedList';
+
+// Shims kept so nothing that calls these breaks
+function nbCreateListAtCursor(tag, cls) {
+  const cmd = tag === 'ol' ? 'insertOrderedList' : 'insertUnorderedList';
   document.execCommand(cmd);
-  if (listClass) {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount) {
-      let node = sel.anchorNode;
-      if (node && node.nodeType === 3) node = node.parentElement;
-      const list = node ? node.closest(tagName) : null;
-      if (list) list.classList.add(listClass);
-    }
-  }
+  if (cls) { const sel = window.getSelection(); if (sel && sel.rangeCount) { let n = sel.anchorNode; if (n && n.nodeType === 3) n = n.parentElement; const l = n && n.closest(tag); if (l) l.classList.add(cls); } }
 }
 function nbSplitLiToType(li, newClass) {
-  if (newClass === 'nb-todo-list' && li.parentElement)
-    li.parentElement.classList.add('nb-todo-list');
+  if (newClass === 'nb-todo-list' && li.parentElement) li.parentElement.classList.add('nb-todo-list');
 }
 
-function placeCursorEnd(el){try{const r=document.createRange(),s=window.getSelection();r.selectNodeContents(el);r.collapse(false);s.removeAllRanges();s.addRange(r);}catch(e){}}
-function placeCursorStart(el){try{const r=document.createRange(),s=window.getSelection();r.setStart(el,0);r.collapse(true);s.removeAllRanges();s.addRange(r);}catch(e){}}
+/* ═══════════════════════════════════════════════════════════
+   CURSOR HELPERS
+═══════════════════════════════════════════════════════════ */
+function placeCursorEnd(el)   { try { const r=document.createRange(),s=window.getSelection(); r.selectNodeContents(el); r.collapse(false); s.removeAllRanges(); s.addRange(r); } catch(e) {} }
+function placeCursorStart(el) { try { const r=document.createRange(),s=window.getSelection(); r.setStart(el,0); r.collapse(true); s.removeAllRanges(); s.addRange(r); } catch(e) {} }
 
-
-
-// ── Stickies ──────────────────────────────────
-
+/* ═══════════════════════════════════════════════════════════
+   STICKIES
+═══════════════════════════════════════════════════════════ */
 function renderStickies(s) {
-  const el=document.getElementById('nbStickies'); if(!el) return;
-  const stickies=s.stickies||[];
-  const colors=['#FFF9C4','#C8F7C5','#C5E8F7','#FFC5C5'];
-  el.innerHTML=stickies.map(st=>`
+  const el = document.getElementById('nbStickies'); if (!el) return;
+  const colors = ['#FFF9C4','#C8F7C5','#C5E8F7','#FFC5C5'];
+  el.innerHTML = (s.stickies||[]).map(st => `
     <div style="background:${st.color};border:1px solid rgba(0,0,0,0.1);border-radius:10px;padding:10px 14px;
       min-width:150px;max-width:200px;position:relative;box-shadow:2px 3px 8px rgba(0,0,0,0.08);flex-shrink:0">
       <button onclick="removeSticky('${s.id}','${st.id}')"
         style="position:absolute;top:4px;right:6px;background:none;border:none;cursor:pointer;font-size:13px;color:rgba(0,0,0,0.3)">×</button>
       <div contenteditable="true" style="font-size:14px;line-height:1.6;outline:none;min-height:40px;padding-right:12px;color:#333"
         onblur="saveStickyText('${s.id}','${st.id}',this.innerText)">${st.text||''}</div>
-    </div>`).join('')+
+    </div>`).join('') +
     `<button onclick="addSticky('${s.id}')" style="align-self:center;background:none;border:1px dashed var(--border);
       border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted);white-space:nowrap;flex-shrink:0"
-      onmouseenter="this.style.borderColor='var(--green)'" onmouseleave="this.style.borderColor='var(--border)'">📌 Add sticky</button>`;
+      onmouseenter="this.style.borderColor='var(--green)'" onmouseleave="this.style.borderColor='var(--border)'">&#128204; Add sticky</button>`;
 }
-
 function addSticky(sectionId) {
-  const sections=loadNotes();
-  const s=sections.find(x=>x.id===sectionId); if(!s) return;
-  if(!s.stickies) s.stickies=[];
-  const colors=['#FFF9C4','#C8F7C5','#C5E8F7','#FFC5C5'];
-  s.stickies.push({id:'st'+Date.now(),text:'',color:colors[s.stickies.length%4]});
-  saveNotes(sections);
-  renderStickies(s);
+  const sections = loadNotes(); const s = sections.find(x => x.id === sectionId); if (!s) return;
+  if (!s.stickies) s.stickies = [];
+  s.stickies.push({ id: 'st' + Date.now(), text: '', color: ['#FFF9C4','#C8F7C5','#C5E8F7','#FFC5C5'][s.stickies.length % 4] });
+  saveNotes(sections); renderStickies(s);
 }
-function removeSticky(sectionId,stickyId) {
-  const sections=loadNotes();
-  const s=sections.find(x=>x.id===sectionId); if(!s) return;
-  s.stickies=(s.stickies||[]).filter(x=>x.id!==stickyId);
-  saveNotes(sections);
-  renderStickies(s);
+function removeSticky(sectionId, stickyId) {
+  const sections = loadNotes(); const s = sections.find(x => x.id === sectionId); if (!s) return;
+  s.stickies = (s.stickies||[]).filter(x => x.id !== stickyId); saveNotes(sections); renderStickies(s);
 }
-function saveStickyText(sectionId,stickyId,text) {
-  const sections=loadNotes();
-  const s=sections.find(x=>x.id===sectionId); if(!s) return;
-  const st=(s.stickies||[]).find(x=>x.id===stickyId); if(!st) return;
-  st.text=text; saveNotes(sections);
+function saveStickyText(sectionId, stickyId, text) {
+  const sections = loadNotes(); const s = sections.find(x => x.id === sectionId); if (!s) return;
+  const st = (s.stickies||[]).find(x => x.id === stickyId); if (!st) return;
+  st.text = text; saveNotes(sections);
 }
 
-// Stubs
+/* ═══════════════════════════════════════════════════════════
+   STUBS  (referenced elsewhere, kept for compatibility)
+═══════════════════════════════════════════════════════════ */
 function selectNoteType(){}
 function globalFmt(cmd){document.execCommand(cmd,false,null);}
 function globalHighlight(c){document.execCommand('hiliteColor',false,c);}
