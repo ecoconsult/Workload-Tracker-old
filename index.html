@@ -4915,7 +4915,7 @@ async function removeLeaveFromTimesheets(personId, startDate, endDate, type, lea
     const tsId = String(personId) + '_' + month;
     const {data: existing} = await sb.from('timesheets').select('*').eq('id', tsId).maybeSingle();
     if(!existing) continue;
-    const colKey = type === 'sick' ? 'sick' : 'leave';
+    const colKey = type === 'sick' ? 'sick' : type === 'business' ? 'business' : type === 'wfh' ? 'wfh' : 'leave';
     // Find and remove the leave column
     const leaveCol = (existing.columns||[]).find(c => c.type === colKey);
     if(!leaveCol) continue;
