@@ -2234,8 +2234,10 @@ async function saveSettings() {
       } catch(e) {}
       if(currentPin!==correct) { showToast('Current password is incorrect'); return; }
       pins[currentUser.id]=newPin; savePins();
-      // Also save to Supabase so it works cross-device and in incognito
-      sb.from('team').update({password: newPin}).eq('id', currentUser.id);
+      // Save to Supabase — awaited so it completes before closing modal
+      const { error: pwErr } = await sb.from('team').update({password: newPin}).eq('id', currentUser.id);
+      if(pwErr) { showToast('⚠ Password save failed: ' + pwErr.message); return; }
+      showToast('Password updated ✓');
     }
   }
   applyLogin(); populateLoginSelect(); closeModal('settingsModal'); showToast('Settings saved ✓');
