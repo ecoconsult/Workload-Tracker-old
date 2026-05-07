@@ -3389,7 +3389,7 @@ function createNoteEl(n, sectionId) {
       border-radius:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;
       resize:horizontal;overflow:hidden;box-sizing:border-box;z-index:10`;
   } else {
-    el.style.cssText = `position:relative;flex:0 0 calc(33.333% - 11px);
+    el.style.cssText = `position:relative;flex:0 0 calc((100% - 32px) / 3);max-width:calc((100% - 32px) / 3);
       min-width:220px;min-height:120px;background:var(--surface);border:1px solid var(--border);
       border-radius:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;
       resize:horizontal;overflow:hidden;box-sizing:border-box`;
