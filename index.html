@@ -3904,9 +3904,12 @@ async function loadUserTimesheet() {
     submitted: false, locked: false
   };
 
-  // Normalize — Supabase may return columns/rows as null
+  // Normalize — Supabase may return columns/rows as null or JSON strings
   if(!tsData.columns) tsData.columns = [];
   if(!tsData.rows) tsData.rows = {};
+  if(typeof tsData.columns === 'string') { try { tsData.columns = JSON.parse(tsData.columns); } catch(e) { tsData.columns = []; } }
+  if(typeof tsData.rows === 'string')    { try { tsData.rows    = JSON.parse(tsData.rows);    } catch(e) { tsData.rows    = {}; } }
+  if(!Array.isArray(tsData.columns)) tsData.columns = [];
 
   // Reload leaves fresh then merge — ensures we always have latest leave data
   await loadLeaves();
@@ -4744,6 +4747,10 @@ async function injectLeaveIntoTimesheets(personId, startDate, endDate, type, lea
     let ts = existing || {id: tsId, person_id: personId, month, columns:[], rows:{}, submitted:false};
     if(!ts.columns) ts.columns = [];
     if(!ts.rows) ts.rows = {};
+    // Parse if Supabase returns as JSON strings
+    if(typeof ts.columns === 'string') { try { ts.columns = JSON.parse(ts.columns); } catch(e) { ts.columns = []; } }
+    if(typeof ts.rows === 'string')    { try { ts.rows    = JSON.parse(ts.rows);    } catch(e) { ts.rows    = {}; } }
+    if(!Array.isArray(ts.columns)) ts.columns = [];
     const colKey = type === 'sick' ? 'sick' : type === 'business' ? 'business' : 'leave';
     const colName = type === 'sick' ? 'Sick Leave' : type === 'business' ? 'Business Leave' : 'Annual Leave';
     // Use stable predictable ID — never use leaveId as column ID
