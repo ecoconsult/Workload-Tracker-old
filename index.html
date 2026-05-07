@@ -3088,16 +3088,18 @@ function loadNotes() {
   try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch(e) { return []; }
 }
 
-// saveNotes: writes to localStorage immediately AND Supabase
-function saveNotes(s) {
+// saveNotes: writes to localStorage immediately AND awaits Supabase
+async function saveNotes(s) {
   const k = notesKey();
   if(k) localStorage.setItem(k, JSON.stringify(s));
   if(currentUser) {
-    sb.from('user_notes').upsert({
-      user_id: String(currentUser.id),
-      notes_data: JSON.stringify(s),
-      updated_at: new Date().toISOString()
-    }).catch(e => console.warn('notes save error:', e.message));
+    try {
+      await sb.from('user_notes').upsert({
+        user_id: String(currentUser.id),
+        notes_data: JSON.stringify(s),
+        updated_at: new Date().toISOString()
+      });
+    } catch(e) { console.warn('notes save error:', e.message); }
   }
 }
 
@@ -3113,10 +3115,10 @@ async function loadNotesFromSupabase() {
     if(error) { console.warn('notes load error:', error.message); return; }
     const k = notesKey();
     if(data && data.notes_data) {
-      // Supabase has data — update local cache and re-render
+      // Supabase is authoritative — always overwrite local cache
       if(k) localStorage.setItem(k, data.notes_data);
     } else if(k) {
-      // Nothing in Supabase yet — push local data up (first-time migration)
+      // Nothing in Supabase yet — migrate local data up once
       const local = localStorage.getItem(k);
       if(local && local !== '[]') {
         await sb.from('user_notes').upsert({
@@ -3124,11 +3126,13 @@ async function loadNotesFromSupabase() {
           notes_data: local,
           updated_at: new Date().toISOString()
         });
+      } else {
+        // No data anywhere — start fresh
+        if(k) localStorage.setItem(k, '[]');
       }
     }
-    // Re-render notes if currently on notes tab
-    const nv = document.getElementById('view-notes');
-    if(nv && !nv.classList.contains('hidden')) renderNotesView();
+    // Always re-render with the now-correct localStorage data
+    renderNotesView();
   } catch(e) { console.warn('loadNotesFromSupabase error:', e.message); }
 }
 
