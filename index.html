@@ -3969,16 +3969,16 @@ function mergeApprovedLeavesIntoTsData(personId, month) {
 
     // Fill in 8h for each working day covered by any leave of this type
     const daysInMonth = new Date(yr, mo, 0).getDate();
+    console.log('Filling leave col:', colKey, 'col.id:', col.id, 'leaves:', leavesOfType.map(l=>l.startDate+'→'+l.endDate));
     for(let day = 1; day <= daysInMonth; day++) {
       const dateStr = month + '-' + String(day).padStart(2, '0');
       const dow = new Date(dateStr + 'T12:00:00').getDay();
-      if(dow === 0 || dow === 6) continue; // skip weekends
-      // Check if any leave of this type covers this day
+      if(dow === 0 || dow === 6) continue;
       const covered = leavesOfType.some(l => l.startDate <= dateStr && l.endDate >= dateStr);
       if(!covered) continue;
       if(!tsData.rows[dateStr]) tsData.rows[dateStr] = {};
-      // Always fill — this is authoritative leave data
       tsData.rows[dateStr][col.id] = 8;
+      console.log('Set', dateStr, col.id, '= 8');
     }
   });
 }
