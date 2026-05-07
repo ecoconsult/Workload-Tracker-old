@@ -3942,13 +3942,15 @@ function mergeApprovedLeavesIntoTsData(personId, month) {
   });
 
   Object.entries(typeGroups).forEach(([colKey, leavesOfType]) => {
-    const colName = colKey === 'sick' ? 'Sick Leave' : 'Annual Leave';
-    // Find or create column
+    const colName = colKey === 'sick' ? 'Sick Leave' : colKey === 'business' ? 'Business Leave' : 'Annual Leave';
+    // Find or create column — reuse existing injected column if present
     let col = tsData.columns.find(c => c.type === colKey);
     if(!col) {
       col = { id: 'col_' + colKey + '_auto', name: colName, type: colKey, autoLeave: true };
       tsData.columns.push(col);
     }
+    // Ensure name is correct (may have been set wrong previously)
+    col.name = colName;
     // Fill in 8h for each working day covered by any leave of this type
     const daysInMonth = new Date(yr, mo, 0).getDate();
     for(let day = 1; day <= daysInMonth; day++) {
@@ -4082,9 +4084,9 @@ function renderTsMatrix() {
       </td>
       ${cols.map(c=>{
         const val=rowData[c.id]||'';
-        const isLeaveCol = c.type === 'leave' || c.type === 'sick';
-        const leaveBg = c.type === 'sick' ? '#fce7f3' : '#dbeafe';
-        const leaveBorderColor = c.type === 'sick' ? '#ec4899' : '#3b82f6';
+        const isLeaveCol = c.type === 'leave' || c.type === 'sick' || c.type === 'business';
+        const leaveBg = c.type === 'sick' ? '#fce7f3' : c.type === 'business' ? '#ede9fe' : '#dbeafe';
+        const leaveBorderColor = c.type === 'sick' ? '#ec4899' : c.type === 'business' ? '#7c3aed' : '#3b82f6';
         if(locked || isLeaveCol) {
           return `<td style="${tdStyle};${isLeaveCol && val && !isWeekend ? `background:${leaveBg};border-color:${leaveBorderColor};font-weight:600;` : ''}color:${val ? 'var(--text)' : 'var(--muted)'}">${val || '—'}</td>`;
         }
