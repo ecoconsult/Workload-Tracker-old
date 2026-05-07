@@ -3071,7 +3071,7 @@ let nbUndoStack        = [];
 let nbSaveTimer        = null;
 let currentNoteSection = null;
 const NB_UNDO_MAX    = 20;
-const NOTE_DEFAULT_W = 380;
+const NOTE_DEFAULT_W = 420;
 const NB_MARGIN_SIDE = 36;
 const NB_MARGIN_TOP  = 20;
 const NB_NOTE_GAP    = 10;
@@ -3140,8 +3140,11 @@ async function loadNotesFromSupabase() {
    CANVAS HELPERS
 ═══════════════════════════════════════════════════════════ */
 function nbNoteWidth() {
-  const c = document.getElementById('nbCanvas');
-  return c ? Math.max(200, Math.floor((c.offsetWidth - 92) / 3)) : NOTE_DEFAULT_W;
+  const canvas = document.getElementById('nbCanvas');
+  const cw = (canvas && canvas.offsetWidth > 200) ? canvas.offsetWidth : 1300;
+  // 3 notes per row with 10px gaps and 36px side margins
+  // (cw - 2*margin - 2*gap) / 3
+  return Math.floor((cw - 72 - 20) / 3);
 }
 // Resolve stored x/w — pure pixel values, exactly as the user placed them
 function nbResolvePx(n, field) {
@@ -3349,6 +3352,12 @@ function renderNoteEditor(sectionId) {
       first.focus(); lastFocusedNote = first;
       try { const r = document.createRange(), sel = window.getSelection(); r.selectNodeContents(first); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); } catch(e) {}
     }
+    // After 200ms, read actual rendered positions and lock them into Supabase.
+    // This only saves if the notes don't already have saved positions (first render).
+    setTimeout(() => {
+      const allHavePositions = s.notes.every(n => n.x && n.w);
+      if (!allHavePositions) saveAllNotes(sectionId);
+    }, 200);
   }
   // Small timeout ensures the tab is fully visible and canvas measured
   setTimeout(() => requestAnimationFrame(placeNotes), 50);
@@ -3469,16 +3478,20 @@ function nbAddNote() {
   nbPushUndo();
   const canvas = document.getElementById('nbCanvas');
   const existing = canvas.querySelectorAll('.nb-note');
-  const nw = nbNoteWidth(), M = NB_MARGIN_SIDE;
+  const nw = NOTE_DEFAULT_W, M = NB_MARGIN_SIDE;
   let x = M, y = NB_MARGIN_TOP;
   if (existing.length) {
     const last = existing[existing.length - 1];
-    const lx = parseInt(last.style.left) || M, lw = last.offsetWidth || nw;
-    if (lx + lw + NB_NOTE_GAP + nw <= canvas.offsetWidth - M) {
-      x = lx + lw + NB_NOTE_GAP; y = parseInt(last.style.top) || NB_MARGIN_TOP;
+    const lx = parseInt(last.style.left) || M;
+    const lw = last.offsetWidth || nw;
+    const cw = canvas.offsetWidth || 1400;
+    if (lx + lw + NB_NOTE_GAP + nw + M <= cw) {
+      x = lx + lw + NB_NOTE_GAP;
+      y = parseInt(last.style.top) || NB_MARGIN_TOP;
     } else {
-      let maxB = 0; existing.forEach(n => { const b = (parseInt(n.style.top) || 0) + n.offsetHeight; if (b > maxB) maxB = b; });
-      x = M; y = maxB + NB_MARGIN_TOP;
+      let maxB = 0;
+      existing.forEach(n => { const b = (parseInt(n.style.top)||0) + n.offsetHeight; if(b>maxB) maxB=b; });
+      x = M; y = maxB + NB_NOTE_GAP;
     }
   }
   const sections = loadNotes();
