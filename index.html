@@ -3143,17 +3143,10 @@ function nbNoteWidth() {
   const c = document.getElementById('nbCanvas');
   return c ? Math.max(200, Math.floor((c.offsetWidth - 92) / 3)) : NOTE_DEFAULT_W;
 }
-// Resolve stored x/w to pixels using percentage if available (responsive)
+// Resolve stored x/w — pure pixel values, exactly as the user placed them
 function nbResolvePx(n, field) {
-  const canvas = document.getElementById('nbCanvas');
-  const cw = (canvas && canvas.offsetWidth > 100) ? canvas.offsetWidth : 1200;
-  if (field === 'x') {
-    const px = n.xPct != null ? Math.round(n.xPct * cw) : (n.x || NB_MARGIN_SIDE);
-    return Math.max(NB_MARGIN_SIDE, Math.min(px, cw - 220 - NB_MARGIN_SIDE));
-  }
-  const xPx = nbResolvePx(n, 'x');
-  const px  = n.wPct != null ? Math.round(n.wPct * cw) : (n.w || NOTE_DEFAULT_W);
-  return Math.max(220, Math.min(px, cw - xPx - NB_MARGIN_SIDE));
+  if (field === 'x') return n.x || NB_MARGIN_SIDE;
+  return n.w || NOTE_DEFAULT_W;
 }
 function updateCanvasHeight() {
   const c = document.getElementById('nbCanvas'); if (!c) return;
@@ -3172,19 +3165,14 @@ function saveAllNotes(sectionId) {
   const sections = loadNotes();
   const s = sections.find(x => x.id === sectionId); if (!s) return;
   const canvas = document.getElementById('nbCanvas'); if (!canvas) return;
-  const cw = canvas.offsetWidth || 1200;
-  s.notes = [...canvas.querySelectorAll('.nb-note')].map(el => {
-    const xPx = parseInt(el.style.left) || NB_MARGIN_SIDE;
-    const wPx = el.offsetWidth || NOTE_DEFAULT_W;
-    return {
-      id: el.dataset.id,
-      content: (el.querySelector('.nb-note-content') || {}).innerHTML || '',
-      x: xPx, y: parseInt(el.style.top) || NB_MARGIN_TOP, w: wPx,
-      xPct: parseFloat((xPx / cw).toFixed(4)),
-      wPct: parseFloat((wPx / cw).toFixed(4)),
-      createdAt: Date.now()
-    };
-  });
+  s.notes = [...canvas.querySelectorAll('.nb-note')].map(el => ({
+    id: el.dataset.id,
+    content: (el.querySelector('.nb-note-content') || {}).innerHTML || '',
+    x: parseInt(el.style.left) || NB_MARGIN_SIDE,
+    y: parseInt(el.style.top)  || NB_MARGIN_TOP,
+    w: el.offsetWidth          || NOTE_DEFAULT_W,
+    createdAt: Date.now()
+  }));
   saveNotes(sections);
 }
 
@@ -3208,13 +3196,9 @@ function saveNoteSection() {
   if (!title) { showToast('Please enter a section title'); return; }
   const sections = loadNotes();
   const parentId = document.getElementById('noteSectionParent')?.value || null;
-  const _cw = (document.getElementById('nbCanvas') || {}).offsetWidth || 1200;
-  const _nw = nbNoteWidth();
   const sec = { id: 'ns' + Date.now(), title, parentId,
     notes: [{ id: 'n' + Date.now(), content: '',
-      x: NB_MARGIN_SIDE, y: NB_MARGIN_TOP, w: _nw,
-      xPct: parseFloat((NB_MARGIN_SIDE / _cw).toFixed(4)),
-      wPct: parseFloat((_nw / _cw).toFixed(4)),
+      x: NB_MARGIN_SIDE, y: NB_MARGIN_TOP, w: nbNoteWidth(),
       createdAt: Date.now() }],
     stickies: [] };
   sections.push(sec);
@@ -3339,12 +3323,8 @@ function renderNoteEditor(sectionId) {
   const sections = loadNotes();
   const s = sections.find(x => x.id === sectionId); if (!s) return;
   if (!s.notes || !s.notes.length) {
-    const cw3 = (document.getElementById('nbCanvas') || {}).offsetWidth || 1200;
-    const dw = nbNoteWidth();
     s.notes = [{ id: 'n' + Date.now(), content: '',
-      x: NB_MARGIN_SIDE, y: NB_MARGIN_TOP, w: dw,
-      xPct: parseFloat((NB_MARGIN_SIDE / cw3).toFixed(4)),
-      wPct: parseFloat((dw / cw3).toFixed(4)),
+      x: NB_MARGIN_SIDE, y: NB_MARGIN_TOP, w: nbNoteWidth(),
       createdAt: Date.now() }];
   }
   document.getElementById('nbSectionHeader').style.display = 'block';
@@ -3503,11 +3483,7 @@ function nbAddNote() {
   }
   const sections = loadNotes();
   const s = sections.find(sec => sec.id === currentNoteSection); if (!s) return;
-  const cw2 = canvas.offsetWidth || 1200;
-  const newNote = { id: 'n' + Date.now(), content: '', x, y, w: nw,
-    xPct: parseFloat((x / cw2).toFixed(4)),
-    wPct: parseFloat((nw / cw2).toFixed(4)),
-    createdAt: Date.now() };
+  const newNote = { id: 'n' + Date.now(), content: '', x, y, w: nw, createdAt: Date.now() };
   if (!s.notes) s.notes = [];
   s.notes.push(newNote); saveNotes(sections);
   const elNew = createNoteEl(newNote, currentNoteSection);
