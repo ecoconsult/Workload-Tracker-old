@@ -1314,7 +1314,11 @@ function getEffectiveLoad(personId, weekKeyStr) {
     const dayLeaves = getLeavesForDay(personId, dStr);
     if(dayLeaves.length) {
       const leaveType = dayLeaves[0].type;
-      workDays.push({load:100, isOverride:false, baseline:dayBaseline,
+      const leaveHrs = dayLeaves[0].hours || 8;
+      // Partial leave: 4hrs = 50% leave + project load for remaining hours
+      const leaveLoad = Math.round((leaveHrs / 8) * 100);
+      const totalLoad = Math.min(100, leaveLoad + dayBaseline);
+      workDays.push({load:totalLoad, isOverride:false, baseline:dayBaseline,
         reasons:[], projects:dayProjects, onLeave:true, leaveType});
     } else if(dayOverrides.length) {
       workDays.push({load: Math.max(...dayOverrides.map(o=>o.load)), isOverride:true,
@@ -3988,7 +3992,9 @@ function mergeApprovedLeavesIntoTsData(personId, month) {
         (c.type==='leave'||c.type==='sick'||c.type==='business') && c.id !== col.id
       );
       const alreadyCovered = otherLeaveCols.some(c => tsData.rows[dateStr][c.id]);
-      if(!alreadyCovered) tsData.rows[dateStr][col.id] = 8;
+      // Use the leave's actual hours (supports partial day leave)
+      const hrs = leavesOfType.find(l => l.startDate <= dateStr && l.endDate >= dateStr)?.hours || 8;
+      if(!alreadyCovered) tsData.rows[dateStr][col.id] = hrs;
     }
   });
   return true;
@@ -4605,7 +4611,8 @@ async function loadLeaves() {
       startDate: r.start_date, endDate: r.end_date,
       type: r.type || 'annual',
       status: r.status || 'pending',
-      approvedBy: r.approved_by
+      approvedBy: r.approved_by,
+      hours: r.hours || 8
     }));
   } catch(e) { /* silently skip */ }
 }
