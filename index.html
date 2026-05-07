@@ -3354,8 +3354,14 @@ function renderNoteEditor(sectionId) {
   const canvas = document.getElementById('nbCanvas');
   canvas.innerHTML = '';
 
-  function placeNotes() {
-    if (canvas.offsetWidth < 100) { requestAnimationFrame(placeNotes); return; }
+  function placeNotes(attempts) {
+    attempts = attempts || 0;
+    const cw = canvas.offsetWidth;
+    if (cw < 100 && attempts < 30) {
+      // Canvas not measured yet — retry up to 30 frames (~500ms)
+      requestAnimationFrame(() => placeNotes(attempts + 1));
+      return;
+    }
     s.notes.forEach(n => canvas.appendChild(createNoteEl(n, sectionId)));
     updateCanvasHeight();
     const first = canvas.querySelector('.nb-note-content');
@@ -3364,7 +3370,8 @@ function renderNoteEditor(sectionId) {
       try { const r = document.createRange(), sel = window.getSelection(); r.selectNodeContents(first); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); } catch(e) {}
     }
   }
-  requestAnimationFrame(placeNotes);
+  // Small timeout ensures the tab is fully visible and canvas measured
+  setTimeout(() => requestAnimationFrame(placeNotes), 50);
 }
 
 /* ═══════════════════════════════════════════════════════════
