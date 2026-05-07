@@ -3913,7 +3913,22 @@ async function loadUserTimesheet() {
 
   // Reload leaves fresh then merge — ensures we always have latest leave data
   await loadLeaves();
-  mergeApprovedLeavesIntoTsData(personId, month);
+  const hadLeaves = mergeApprovedLeavesIntoTsData(personId, month);
+
+  // If leaves were merged, save updated tsData back to Supabase so it persists
+  if(hadLeaves) {
+    try {
+      await sb.from('timesheets').upsert({
+        id: tsData.id,
+        person_id: String(personId),
+        month: month,
+        columns: tsData.columns,
+        rows: tsData.rows,
+        submitted: tsData.submitted || false,
+        locked: tsData.locked || false
+      });
+    } catch(e) { console.warn('Leave sync save error:', e.message); }
+  }
 
   // Render — each step isolated so one failure never blocks the next
   try { populateTsColDropdown(); } catch(e) { console.warn('Dropdown error:', e); }
@@ -3922,7 +3937,7 @@ async function loadUserTimesheet() {
 }
 
 function mergeApprovedLeavesIntoTsData(personId, month) {
-  if(!tsData || !leaves || !leaves.length) return;
+  if(!tsData || !leaves || !leaves.length) return false;
   const [yr, mo] = month.split('-').map(Number);
   const monthStart = month + '-01';
   const monthEnd   = month + '-' + String(new Date(yr, mo, 0).getDate()).padStart(2, '0');
@@ -3934,7 +3949,7 @@ function mergeApprovedLeavesIntoTsData(personId, month) {
     l.startDate <= monthEnd &&
     l.endDate >= monthStart
   );
-  if(!relevantLeaves.length) return;
+  if(!relevantLeaves.length) return false;
 
   // Group by type so annual and sick each get one column
   const typeGroups = {}; // 'leave' | 'sick' -> [leave, ...]
@@ -3966,6 +3981,7 @@ function mergeApprovedLeavesIntoTsData(personId, month) {
       tsData.rows[dateStr][col.id] = 8;
     }
   });
+  return true;
 }
 
 function populateTsColDropdown() {
