@@ -3951,6 +3951,22 @@ function mergeApprovedLeavesIntoTsData(personId, month) {
     }
     // Ensure name is correct (may have been set wrong previously)
     col.name = colName;
+    // Migrate hours from any old column IDs of this type to the current col.id
+    // This fixes the mismatch between col_leave_[leaveId] and col_leave_auto
+    const oldCols = (tsData.columns || []).filter(c => c.type === colKey && c.id !== col.id);
+    if(oldCols.length && tsData.rows) {
+      Object.keys(tsData.rows).forEach(dateStr => {
+        oldCols.forEach(oldCol => {
+          if(tsData.rows[dateStr][oldCol.id]) {
+            if(!tsData.rows[dateStr][col.id]) tsData.rows[dateStr][col.id] = tsData.rows[dateStr][oldCol.id];
+            delete tsData.rows[dateStr][oldCol.id];
+          }
+        });
+      });
+      // Remove old duplicate columns
+      tsData.columns = tsData.columns.filter(c => !(c.type === colKey && c.id !== col.id));
+    }
+
     // Fill in 8h for each working day covered by any leave of this type
     const daysInMonth = new Date(yr, mo, 0).getDate();
     for(let day = 1; day <= daysInMonth; day++) {
@@ -3961,10 +3977,8 @@ function mergeApprovedLeavesIntoTsData(personId, month) {
       const covered = leavesOfType.some(l => l.startDate <= dateStr && l.endDate >= dateStr);
       if(!covered) continue;
       if(!tsData.rows[dateStr]) tsData.rows[dateStr] = {};
-      // Only set if not already logged (don't overwrite manual entries)
-      if(!tsData.rows[dateStr][col.id]) {
-        tsData.rows[dateStr][col.id] = 8;
-      }
+      // Always fill — this is authoritative leave data
+      tsData.rows[dateStr][col.id] = 8;
     }
   });
 }
