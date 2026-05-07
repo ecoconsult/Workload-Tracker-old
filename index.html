@@ -884,7 +884,9 @@ select option{background:#fff}
     </div>
     <div id="leaveHoursField" style="display:none">
       <label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Hours <span style="font-weight:400;color:var(--muted)">(leave blank for full day)</span></label>
-      <input type="number" id="leaveHours" min="1" max="8" step="0.5" placeholder="Default: 8 hrs"
+      <input type="text" inputmode="decimal" id="leaveHours" placeholder="Default: 8 hrs (max 8)"
+        onkeypress="return /[0-9.]/.test(event.key)"
+        oninput="this.value=this.value.replace(/[^0-9.]/g,'');if(parseFloat(this.value)>8)this.value='8';"
         style="width:100%;padding:8px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
     </div>
     <div id="myLeavesSection" style="margin-top:16px">
@@ -4708,8 +4710,11 @@ async function submitLeave() {
   const startDate = document.getElementById('leaveStart').value;
   const endDate = document.getElementById('leaveEnd').value;
   const type = document.getElementById('leaveType').value;
-  const hoursInput = document.getElementById('leaveHours').value;
-  const leaveHours = (startDate === endDate && hoursInput) ? parseFloat(hoursInput) : 8;
+  const hoursInput = document.getElementById('leaveHours').value.trim();
+  const leaveHours = (startDate === endDate && hoursInput && parseFloat(hoursInput) > 0)
+    ? Math.min(8, parseFloat(hoursInput))
+    : 8;
+  console.log('LEAVE DEBUG - startDate:', startDate, 'endDate:', endDate, 'hoursInput:', JSON.stringify(hoursInput), 'leaveHours:', leaveHours);
   if(!startDate || !endDate) { showToast('Please select start and end dates'); return; }
   if(endDate < startDate) { showToast('End date must be after start date'); return; }
 
