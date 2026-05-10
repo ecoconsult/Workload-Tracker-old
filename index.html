@@ -3066,10 +3066,6 @@ function openDayModal(dateStr) {
 // ═══════════════════════════════════════════════
 //  NOTES — Free-form canvas (OneNote style)
 // ═══════════════════════════════════════════════
-let lastFocusedNote    = null;
-let nbUndoStack        = [];
-let nbSaveTimer        = null;
-let currentNoteSection = null;
 let nbSaveTimer       = null;
 let lastFocusedNote   = null;
 let nbUndoStack       = [];
@@ -3347,6 +3343,7 @@ function createNoteEl(n, sectionId) {
       el.style.boxShadow = 'var(--shadow)';
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup',   onUp);
+      nbResolveOverlaps(el);
       saveAllNotes(sectionId);
     };
     document.addEventListener('mousemove', onMove);
@@ -3399,30 +3396,69 @@ function createNoteEl(n, sectionId) {
   /* Resize — ONLY saves; enforces right boundary; never recalculates other notes ── */
   // We observe just this one element. The saved width (n.w) is set in el.style.width.
   // We use style.width (not offsetWidth) everywhere so there is NO mismatch.
-  let _savedW = n.w || NOTE_DEFAULT_W;  // the width currently persisted for this note
+  let _savedW = n.w || NOTE_DEFAULT_W;
   const ro = new ResizeObserver(() => {
-    // Read from style.width (what the browser resize handle sets directly)
     const rawW = parseInt(el.style.width) || el.offsetWidth;
-    if (rawW === _savedW) return;  // nothing actually changed
-
-    // Clamp to right margin
+    if (rawW === _savedW) return;
     const canvas = document.getElementById('nbCanvas');
     const maxW = canvas ? canvas.offsetWidth - (parseInt(el.style.left)||0) - NB_MARGIN : rawW;
     const clampedW = Math.max(220, Math.min(rawW, maxW));
-
     if (clampedW !== rawW) el.style.width = clampedW + 'px';
     _savedW = clampedW;
-
     clearTimeout(nbSaveTimer);
-    nbSaveTimer = setTimeout(()=>saveAllNotes(sectionId), 500);
+    nbSaveTimer = setTimeout(() => saveAllNotes(sectionId), 500);
   });
   ro.observe(el);
+  // Snap overlaps on mouse release after resize — identical behaviour to drag
+  el.addEventListener('mouseup', function(e) {
+    if (e.target.closest('.nb-note-bar')) return; // drag handles this itself
+    nbResolveOverlaps(el);
+  });
 
   /* Focus highlight ── */
   el.addEventListener('focusin',  ()=>{ el.style.borderColor='var(--green)'; el.style.boxShadow='0 0 0 2px rgba(45,143,94,0.12),var(--shadow)'; });
   el.addEventListener('focusout', ()=>{ el.style.borderColor='var(--border)'; el.style.boxShadow='var(--shadow)'; });
 
   return el;
+}
+
+/* ── Overlap resolution (runs once on drag end) ──────────────── */
+function nbResolveOverlaps(movedEl) {
+  const canvas = document.getElementById('nbCanvas'); if (!canvas) return;
+  const notes  = [...canvas.querySelectorAll('.nb-note')];
+  if (notes.length < 2) { updateCanvasHeight(); return; }
+  const cw    = canvas.offsetWidth;
+  const mover = movedEl || notes[notes.length - 1];
+  let changed = true, iters = 0;
+  while (changed && iters++ < 80) {
+    changed = false;
+    const ml = parseInt(mover.style.left)||0, mt = parseInt(mover.style.top)||0;
+    const mw = mover.offsetWidth,             mh = mover.offsetHeight;
+    for (const other of notes) {
+      if (other === mover) continue;
+      const ol = parseInt(other.style.left)||0, ot = parseInt(other.style.top)||0;
+      const ow = other.offsetWidth,             oh = other.offsetHeight;
+      // Check actual overlap (no gap yet — just real pixel overlap)
+      const overlapX = Math.min(ml+mw, ol+ow) - Math.max(ml, ol);
+      const overlapY = Math.min(mt+mh, ot+oh) - Math.max(mt, ot);
+      if (overlapX <= 0 || overlapY <= 0) continue; // no overlap at all
+      // Push in whichever axis has LESS overlap — always moves fully clear
+      if (overlapX <= overlapY) {
+        // Push horizontally — place fully clear with gap
+        const goRight = (ml + mw/2) >= (ol + ow/2);
+        const target  = goRight ? ol + ow + NB_GAP : ol - mw - NB_GAP;
+        mover.style.left = Math.max(NB_MARGIN, Math.min(target, cw - mw - NB_MARGIN)) + 'px';
+      } else {
+        // Push vertically — place fully clear with gap
+        const goDown = (mt + mh/2) >= (ot + oh/2);
+        mover.style.top = Math.max(NB_MARGIN, goDown ? ot + oh + NB_GAP : ot - mh - NB_GAP) + 'px';
+      }
+      changed = true; break;
+    }
+  }
+  mover.style.left = Math.max(NB_MARGIN, Math.min(parseInt(mover.style.left)||0, cw-mover.offsetWidth-NB_MARGIN)) + 'px';
+  mover.style.top  = Math.max(NB_MARGIN, parseInt(mover.style.top)||0) + 'px';
+  updateCanvasHeight();
 }
 
 /* ── Add note ─────────────────────────────────────────────────── */
