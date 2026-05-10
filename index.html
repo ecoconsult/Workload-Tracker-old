@@ -763,7 +763,7 @@ select option{background:#fff}
           <hr style="border:none;border-top:1px solid var(--border);margin-bottom:0">
         </div>
         <!-- Canvas: notes are absolutely positioned here -->
-        <div id="nbCanvas" style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px;padding:36px 36px 40px 36px;min-height:200px;overflow:hidden;box-sizing:border-box;width:100%"></div>
+        <div id="nbCanvas" style="position:relative;min-height:700px;padding:20px 0 20px 0;overflow:visible"></div>
         <!-- Canvas: notes are absolutely positioned here -->
       </div>
     </div>
@@ -3141,29 +3141,13 @@ async function loadNotesFromSupabase() {
 ═══════════════════════════════════════════════════════════ */
 function nbNoteWidth() {
   const canvas = document.getElementById('nbCanvas');
-  const cw = (canvas && canvas.offsetWidth > 200) ? canvas.offsetWidth : 1300;
-  // 3 notes per row with 10px gaps and 36px side margins
-  // (cw - 2*margin - 2*gap) / 3
-  return Math.floor((cw - 72 - 20) / 3);
+  if (!canvas) return NOTE_DEFAULT_W;
+  // 36px left margin + 36px right margin + 2 gaps of 10px = 92px reserved
+  return Math.max(200, Math.floor((canvas.offsetWidth - 92) / 3));
 }
-// Returns CSS value string — percentage if available, px otherwise
-function nbResolveCss(n, field) {
-  if (field === 'x') {
-    if (n.xPct != null) return (n.xPct * 100).toFixed(4) + '%';
-    return (n.x || NB_MARGIN_SIDE) + 'px';
-  }
-  if (n.wPct != null) return (n.wPct * 100).toFixed(4) + '%';
-  return (n.w || NOTE_DEFAULT_W) + 'px';
-}
-// Keep nbResolvePx for legacy drag calculations (returns px number)
+
 function nbResolvePx(n, field) {
-  const canvas = document.getElementById('nbCanvas');
-  const cw = (canvas && canvas.offsetWidth > 100) ? canvas.offsetWidth : 1300;
-  if (field === 'x') {
-    if (n.xPct != null) return Math.round(n.xPct * cw);
-    return n.x || NB_MARGIN_SIDE;
-  }
-  if (n.wPct != null) return Math.round(n.wPct * cw);
+  if (field === 'x') return n.x || NB_MARGIN_SIDE;
   return n.w || NOTE_DEFAULT_W;
 }
 function updateCanvasHeight() {
@@ -3184,15 +3168,14 @@ function saveAllNotes(sectionId) {
   const s = sections.find(x => x.id === sectionId); if (!s) return;
   const canvas = document.getElementById('nbCanvas'); if (!canvas) return;
   s.notes = [...canvas.querySelectorAll('.nb-note')].map(el => {
-    const dragged = el.style.position === 'absolute';
+    const id=el.dataset.id;
+    const c=el.querySelector('.nb-note-content');
     return {
-      id: el.dataset.id,
-      content: (el.querySelector('.nb-note-content') || {}).innerHTML || '',
-      dragged,
-      x: dragged ? (parseInt(el.style.left) || 0) : 0,
-      y: dragged ? (parseInt(el.style.top)  || 0) : 0,
-      w: dragged ? (el.offsetWidth || 420)         : 420,
-      createdAt: Date.now()
+      id, content:c?c.innerHTML:'',
+      x:parseInt(el.style.left)||20,
+      y:parseInt(el.style.top)||20,
+      w:el.offsetWidth||NOTE_DEFAULT_W,
+      createdAt:Date.now()
     };
   });
   saveNotes(sections);
@@ -3371,7 +3354,7 @@ function renderNoteEditor(sectionId) {
     }
 
   }
-  placeNotes();
+  setTimeout(() => requestAnimationFrame(placeNotes), 50);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -3381,19 +3364,10 @@ function createNoteEl(n, sectionId) {
   const el = document.createElement('div');
   el.className  = 'nb-note';
   el.dataset.id = n.id;
-  // Flex item unless user explicitly dragged it to a valid position
-  const isValidDrag = n.dragged && n.x > 0 && n.y > 0;
-  if (isValidDrag) {
-    el.style.cssText = `position:absolute;left:${n.x}px;top:${n.y}px;width:${n.w||420}px;
-      min-width:220px;min-height:120px;background:var(--surface);border:1px solid var(--border);
-      border-radius:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;
-      resize:horizontal;overflow:hidden;box-sizing:border-box;z-index:10`;
-  } else {
-    el.style.cssText = `position:relative;flex:0 0 calc((100% - 32px) / 3);max-width:calc((100% - 32px) / 3);
-      min-width:220px;min-height:120px;background:var(--surface);border:1px solid var(--border);
-      border-radius:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;
-      resize:horizontal;overflow:hidden;box-sizing:border-box`;
-  }
+  el.style.cssText = `position:absolute;left:${n.x||20}px;top:${n.y||20}px;width:${n.w||NOTE_DEFAULT_W}px;
+    min-width:220px;min-height:120px;background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;
+    resize:horizontal;overflow:hidden;box-sizing:border-box`;
   el.innerHTML = `
     <div class="nb-note-bar" style="display:flex;align-items:center;padding:6px 10px;background:var(--surface2);
       border-bottom:1px solid var(--border);gap:6px;cursor:grab;user-select:none;flex-shrink:0;border-radius:11px 11px 0 0">
@@ -3409,36 +3383,31 @@ function createNoteEl(n, sectionId) {
 
   /* ── Drag by title bar ─────────────────────────────────────────────── */
   el.querySelector('.nb-note-bar').addEventListener('mousedown', function(e) {
-    if (e.target.tagName === 'BUTTON') return;
+    if(e.target.tagName==='BUTTON') return;
     e.preventDefault();
-    const canvas = document.getElementById('nbCanvas');
-    // Switch to absolute positioning on first drag
-    if (el.style.position !== 'absolute') {
-      const rect = el.getBoundingClientRect();
-      const canvasRect = canvas.getBoundingClientRect();
-      el.style.position = 'absolute';
-      el.style.left = (rect.left - canvasRect.left) + 'px';
-      el.style.top  = (rect.top  - canvasRect.top)  + 'px';
-      el.style.width = rect.width + 'px';
-      el.style.flex = 'none';
-    }
-    const sx = e.clientX, sy = e.clientY;
-    const sl = parseInt(el.style.left) || 0, st = parseInt(el.style.top) || 0;
-    let maxZ = 100; document.querySelectorAll('.nb-note').forEach(x => { const z = parseInt(x.style.zIndex)||1; if(z>maxZ)maxZ=z; });
-    el.style.zIndex = maxZ + 1; el.style.boxShadow = '0 8px 30px rgba(0,0,0,0.15)';
-    const onMove = ev => {
-      el.style.left = Math.max(0, sl + ev.clientX - sx) + 'px';
-      el.style.top  = Math.max(0, st + ev.clientY - sy) + 'px';
+    const startX=e.clientX, startY=e.clientY;
+    const startL=parseInt(el.style.left)||0, startT=parseInt(el.style.top)||0;
+    let maxZ=100;
+    document.querySelectorAll('.nb-note').forEach(n=>{const z=parseInt(n.style.zIndex)||1;if(z>maxZ)maxZ=z;});
+    el.style.zIndex=maxZ+1; el.style.boxShadow='0 8px 30px rgba(0,0,0,0.15)';
+    function onMove(e) {
+      const canvas=document.getElementById('nbCanvas'); if(!canvas) return;
+      const canvasW=canvas.offsetWidth;
+      const newL=Math.max(NB_MARGIN_SIDE, Math.min(canvasW-el.offsetWidth-NB_MARGIN_SIDE, startL+e.clientX-startX));
+      const newT=Math.max(NB_MARGIN_TOP, startT+e.clientY-startY);
+      el.style.left=newL+'px';
+      el.style.top=newT+'px';
       updateCanvasHeight();
-    };
-    const onUp = () => {
-      el.style.boxShadow = 'var(--shadow)';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup',   onUp);
+    }
+    function onUp() {
+      el.style.boxShadow='var(--shadow)';
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+      nbResolveOverlaps(el);
       saveAllNotes(sectionId);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup',   onUp);
+    }
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
   });
 
   const content = el.querySelector('.nb-note-content');
@@ -3485,22 +3454,23 @@ function createNoteEl(n, sectionId) {
   content.addEventListener('mouseup', nbSaveLastRange);
   content.addEventListener('focus',   nbSaveLastRange);
 
-  new ResizeObserver(() => {
-    // When user resizes, convert to absolute at current position
-    if (el.style.position !== 'absolute' && el.offsetWidth > 0) {
-      const canvas = document.getElementById('nbCanvas'); if (!canvas) return;
-      const rect = el.getBoundingClientRect();
-      const cr   = canvas.getBoundingClientRect();
-      const newW = el.offsetWidth;
-      el.style.position = 'absolute';
-      el.style.left  = (rect.left - cr.left) + 'px';
-      el.style.top   = (rect.top  - cr.top)  + 'px';
-      el.style.width = newW + 'px';
-      el.style.flex  = 'none';
-      el.style.maxWidth = 'none';
-    }
-    clearTimeout(nbSaveTimer); nbSaveTimer = setTimeout(() => saveAllNotes(sectionId), 500);
-  }).observe(el);
+  const ro=new ResizeObserver(()=>{
+    const canvas=document.getElementById('nbCanvas'); if(!canvas) return;
+    const noteLeft=parseInt(el.style.left)||0;
+    let maxW=canvas.offsetWidth - noteLeft - NB_MARGIN_SIDE;
+    canvas.querySelectorAll('.nb-note').forEach(other=>{
+      if(other===el) return;
+      const ol=parseInt(other.style.left)||0;
+      if(ol > noteLeft) {
+        const gap=ol - noteLeft - NB_NOTE_GAP;
+        if(gap < maxW) maxW=gap;
+      }
+    });
+    if(maxW>80 && el.offsetWidth>maxW) el.style.width=maxW+'px';
+    clearTimeout(nbSaveTimer);
+    nbSaveTimer=setTimeout(()=>saveAllNotes(sectionId),500);
+  });
+  ro.observe(el);
 
   el.addEventListener('focusin',  () => {
     // Only elevate z-index for absolutely positioned (dragged) notes
@@ -3522,10 +3492,26 @@ function nbAddNote() {
   nbPushUndo();
   const canvas = document.getElementById('nbCanvas');
   const existing = canvas.querySelectorAll('.nb-note');
-  const sections = loadNotes();
-  const s = sections.find(sec => sec.id === currentNoteSection); if (!s) return;
-  // New notes are flex items — no position needed
-  const newNote = { id: 'n' + Date.now(), content: '', dragged: false, w: 420, createdAt: Date.now() };
+  const nw=nbNoteWidth();
+  const GAP=10;
+  const MARGIN=36;
+  let x=MARGIN, y=20;
+  if(existing.length) {
+    const last=existing[existing.length-1];
+    const lx=parseInt(last.style.left)||MARGIN;
+    const lw=last.offsetWidth||nw;
+    const canvasW=canvas.offsetWidth;
+    if(lx+lw+GAP+nw <= canvasW-MARGIN) {
+      x=lx+lw+GAP; y=parseInt(last.style.top)||20;
+    } else {
+      let maxBottom=0;
+      existing.forEach(n=>{const b=(parseInt(n.style.top)||0)+n.offsetHeight; if(b>maxBottom)maxBottom=b;});
+      x=MARGIN; y=maxBottom+NB_MARGIN_TOP;
+    }
+  }
+  const sections=loadNotes();
+  const s=sections.find(sec=>sec.id===currentNoteSection); if(!s) return;
+  const newNote={id:'n'+Date.now(),content:'',x,y,w:nw,createdAt:Date.now()};
   if (!s.notes) s.notes = [];
   s.notes.push(newNote); saveNotes(sections);
   const elNew = createNoteEl(newNote, currentNoteSection);
