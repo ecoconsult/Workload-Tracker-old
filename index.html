@@ -3838,7 +3838,7 @@ function mergeApprovedLeavesIntoTsData(personId, month) {
   // Group by type so annual and sick each get one column
   const typeGroups = {}; // 'leave' | 'sick' -> [leave, ...]
   relevantLeaves.forEach(l => {
-    if(l.type === 'wfh') return; // WFH never goes into timesheet
+    if(l.type === 'wfh' || l.type === 'business') return; // WFH and BL never go into timesheet
     const key = l.type === 'sick' ? 'sick' : l.type === 'business' ? 'business' : 'leave';
     if(!typeGroups[key]) typeGroups[key] = [];
     typeGroups[key].push(l);
@@ -3988,10 +3988,24 @@ function renderTsMatrix() {
     const bgRow=isWeekend?'background:#f5f3ef':'';
     const totalColor=isOverday?'color:var(--red);font-weight:700':rowTotal>0?'color:var(--green)':'color:var(--muted)';
 
-    html+=`<tr style="${bgRow}">
+    // Check if this day has WFH or BL leave for current user
+    const dayLeaves = leaves.filter(l => {
+      if (!currentUser || l.personId != currentUser.id) return false;
+      if (l.status !== 'approved') return false;
+      if (l.type !== 'wfh' && l.type !== 'business') return false;
+      return dateStr >= l.startDate && dateStr <= l.endDate;
+    });
+    const isWFH      = dayLeaves.some(l => l.type === 'wfh');
+    const isBusiness = dayLeaves.some(l => l.type === 'business');
+    const leaveTag   = isWFH ? ' <span style="font-size:10px;background:#fce7f3;color:#be185d;border-radius:4px;padding:1px 5px;font-weight:600;vertical-align:middle">WFH</span>'
+                     : isBusiness ? ' <span style="font-size:10px;background:#ede9fe;color:#6d28d9;border-radius:4px;padding:1px 5px;font-weight:600;vertical-align:middle">BL</span>'
+                     : '';
+    const rowBg = isWeekend ? '#f5f3ef' : isWFH ? '#fdf2f8' : isBusiness ? '#f5f3ff' : '';
+
+    html+=`<tr style="${rowBg ? 'background:'+rowBg : ''}">
       <td style="${tdStyle};color:${isWeekend?'var(--muted)':'var(--text2)'};">${dayLabel}</td>
-      <td style="${tdStyle};font-weight:600;text-align:left;position:sticky;left:0;background:${isWeekend?'#f5f3ef':'var(--surface)'}">
-        ${isMissing?'🔴 ':''}<span style="color:${isWeekend?'var(--muted)':'var(--text)'}">${displayDate}</span>
+      <td style="${tdStyle};font-weight:600;text-align:left;position:sticky;left:0;background:${rowBg || (isWeekend?'#f5f3ef':'var(--surface)')}">
+        ${isMissing?'🔴 ':''}<span style="color:${isWeekend?'var(--muted)':'var(--text)'}">${displayDate}</span>${leaveTag}
       </td>
       ${cols.map(c=>{
         const val=rowData[c.id]||'';
@@ -4133,7 +4147,8 @@ async function submitUserTimesheet() {
 async function exportMyTimesheet() {
   if(!tsData||!tsData.columns||!tsData.columns.length){showToast('Nothing to export');return;}
   const wb=XLSX.utils.book_new();
-  const ws=buildTsSheet(tsData, currentUser.name);
+  const myLeaves = leaves.filter(l => l.personId == currentUser.id);
+  const ws=buildTsSheet(tsData, currentUser.name, myLeaves);
   XLSX.utils.book_append_sheet(wb, ws, currentUser.name.split(' ')[0]||'Timesheet');
   XLSX.writeFile(wb, `Timesheet_${currentUser.name.replace(' ','_')}_${tsData.month}.xlsx`);
 }
@@ -4194,7 +4209,8 @@ async function hrExportOne(personId, month) {
   if(!data){showToast('No data');return;}
   const person=team.find(p=>p.id===personId);
   const wb=XLSX.utils.book_new();
-  const ws=buildTsSheet(data, person?person.name:'Unknown');
+  const personLeaves = leaves.filter(l => l.personId == personId);
+  const ws=buildTsSheet(data, person?person.name:'Unknown', personLeaves);
   XLSX.utils.book_append_sheet(wb, ws, (person?person.name.split(' ')[0]:'Person')||'Sheet');
   XLSX.writeFile(wb, `Timesheet_${person?person.name.replace(' ','_'):'Person'}_${month}.xlsx`);
 }
@@ -4214,7 +4230,8 @@ async function exportAllTimesheets(individual) {
       // Summary
       const sumWs=buildTsSummarySheet([s],team,month);
       XLSX.utils.book_append_sheet(wb,sumWs,'Summary');
-      const ws=buildTsSheet(s,person?person.name:'Unknown');
+      const pLeaves=leaves.filter(l=>l.personId==s.person_id);
+      const ws=buildTsSheet(s,person?person.name:'Unknown',pLeaves);
       XLSX.utils.book_append_sheet(wb,ws,(person?person.name.split(' ')[0]:'Person')||'Sheet');
       XLSX.writeFile(wb,`Timesheet_${person?person.name.replace(' ','_'):'Person'}_${month}.xlsx`);
     });
@@ -4226,14 +4243,15 @@ async function exportAllTimesheets(individual) {
     // Individual sheets
     sheets.forEach(s=>{
       const person=team.find(p=>String(p.id)===String(s.person_id));
-      const ws=buildTsSheet(s,person?person.name:'Unknown');
+      const pLeaves=leaves.filter(l=>l.personId==s.person_id);
+      const ws=buildTsSheet(s,person?person.name:'Unknown',pLeaves);
       XLSX.utils.book_append_sheet(wb,ws,(person?person.name.split(' ')[0]:'Person')||'Sheet');
     });
     XLSX.writeFile(wb,`Timesheets_All_${month}.xlsx`);
   }
 }
 
-function buildTsSheet(ts, personName) {
+function buildTsSheet(ts, personName, leavesForPerson) {
   const [yr,mo]=ts.month.split('-').map(Number);
   const daysInMonth=new Date(yr,mo,0).getDate();
   const cols=ts.columns||[];
@@ -4264,7 +4282,15 @@ function buildTsSheet(ts, personName) {
     const rowData=rows[dateStr]||{};
     const colVals=cols.map(c=>parseFloat(rowData[c.id])||0);
     const total=colVals.reduce((a,b)=>a+b,0);
-    aoa.push([dateStr, dayNames[dow], ...colVals, total]);
+    // Check WFH/BL for this day
+    let dateLabel = dateStr;
+    if (leavesForPerson && leavesForPerson.length) {
+      const hasWFH = leavesForPerson.some(l => l.type==='wfh' && l.status==='approved' && dateStr>=l.startDate && dateStr<=l.endDate);
+      const hasBL  = leavesForPerson.some(l => l.type==='business' && l.status==='approved' && dateStr>=l.startDate && dateStr<=l.endDate);
+      if (hasWFH) dateLabel = dateStr + ' (WFH)';
+      else if (hasBL) dateLabel = dateStr + ' (BL)';
+    }
+    aoa.push([dateLabel, dayNames[dow], ...colVals, total]);
   }
 
   // Monthly totals row
@@ -4350,6 +4376,21 @@ function buildTsSheet(ts, personName) {
   }
 
   // Column widths — match reference file
+  // Colour WFH/BL rows in Excel
+  if (leavesForPerson && leavesForPerson.length) {
+    for(let d=1;d<=daysInMonth;d++){
+      const dateStr=ts.month+'-'+String(d).padStart(2,'0');
+      const hasWFH = leavesForPerson.some(l => l.type==='wfh' && l.status==='approved' && dateStr>=l.startDate && dateStr<=l.endDate);
+      const hasBL  = leavesForPerson.some(l => l.type==='business' && l.status==='approved' && dateStr>=l.startDate && dateStr<=l.endDate);
+      if (!hasWFH && !hasBL) continue;
+      const fillRgb = hasWFH ? 'FCE7F3' : 'EDE9FE';
+      const r = 4 + (d-1); // row index in sheet (0-based, data starts at row 4)
+      for(let c=0;c<totalCols;c++){
+        applyFill(cellRef(r,c), fillRgb);
+      }
+    }
+  }
+
   ws['!cols'] = [
     {wch:15},   // Date
     {wch:8},    // Day
@@ -4646,7 +4687,7 @@ async function submitLeave() {
 }
 
 async function injectLeaveIntoTimesheets(personId, startDate, endDate, type, leaveId, leaveHours) {
-  if(type === 'wfh') return; // WFH never touches the timesheet
+  if(type === 'wfh' || type === 'business') return; // WFH and BL never touch the timesheet
   leaveHours = leaveHours || 8; // default full day
   // Find all months covered by this leave
   const months = [];
