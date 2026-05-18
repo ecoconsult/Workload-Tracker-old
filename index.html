@@ -1614,6 +1614,68 @@ function setProjFilter(f) {
   renderProjects();
 }
 
+async function changePM(projId) {
+  const proj = projects.find(p => p.id === projId);
+  if (!proj) return;
+  if (!isAdmin() && proj.creatorId !== currentUser.id) { showToast('Only the PM or Ibrahim can change the PM'); return; }
+
+  // Build modal HTML with member dropdown
+  const memberOptions = proj.members
+    .map(m => {
+      const person = team.find(t => t.id === m.personId);
+      if (!person || person.id === proj.creatorId) return '';
+      return `<option value="${person.id}">${person.name}</option>`;
+    }).filter(Boolean).join('');
+
+  if (!memberOptions) { showToast('No other members to assign as PM'); return; }
+
+  // Use a simple confirm-style overlay
+  const existing = document.getElementById('changePMModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'changePMModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:16px;padding:28px 32px;width:380px;box-shadow:0 8px 40px rgba(0,0,0,0.18)">
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px">Change Project Manager</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:20px">The new PM will have full edit access. You will lose PM privileges for this project.</div>
+      <label style="font-size:12px;color:var(--text2);font-weight:600;display:block;margin-bottom:6px">Select New PM</label>
+      <select id="newPMSel" style="width:100%;padding:9px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:20px">
+        ${memberOptions}
+      </select>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('changePMModal').remove()" style="padding:8px 18px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-size:13px;color:var(--text2)">Cancel</button>
+        <button onclick="confirmChangePM(${projId})" style="padding:8px 18px;border:none;border-radius:8px;background:var(--green);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Confirm</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function confirmChangePM(projId) {
+  const sel = document.getElementById('newPMSel');
+  if (!sel) return;
+  const newPMId = parseInt(sel.value);
+  if (!newPMId) return;
+
+  const newPM = team.find(t => t.id === newPMId);
+  if (!newPM) return;
+
+  if (!confirm(`Transfer PM role to ${newPM.name}? You will lose edit access to this project.`)) return;
+
+  // Update in Supabase
+  const { error } = await sb.from('projects').update({ creator_id: newPMId }).eq('id', projId);
+  if (error) { showToast('Failed to update PM'); return; }
+
+  // Update local state
+  const proj = projects.find(p => p.id === projId);
+  if (proj) proj.creatorId = newPMId;
+
+  document.getElementById('changePMModal').remove();
+  showToast(`${newPM.name} is now the Project Manager ✓`);
+  renderProjects();
+}
+
 function renderProjects() {
   const uid = currentUser ? currentUser.id : null;
   const allActive   = projects.filter(p => !p.archived);
@@ -1717,6 +1779,7 @@ function renderProjects() {
             <span style="font-size:11px;color:var(--text2);font-weight:500">${pmPerson.name}</span>`:''}
             <span class="pm-badge">Project Manager</span>
             ${isMyProject?`<span style="font-size:10px;color:var(--green);font-weight:600">✓ Your project</span>`:''}
+            ${(isMyProject || isAdmin())?`<button onclick="event.stopPropagation();changePM(${p.id})" style="font-size:10px;background:none;border:1px solid var(--border);border-radius:5px;padding:2px 7px;cursor:pointer;color:var(--muted);margin-left:4px" onmouseenter="this.style.borderColor='var(--green)';this.style.color='var(--green)'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">Change PM</button>`:''}
           </div>
         </div>
         <div class="proj-alloc-badge" style="color:var(--text);flex-shrink:0;text-align:center">
@@ -2380,6 +2443,8 @@ function renderMyWork() {
             ? '<span class="leave-badge sick">Sick</span>'
             : l.type === 'business'
         ? '<span class="leave-badge business">Business Leave</span>'
+        : l.type === 'wfh'
+        ? '<span class="leave-badge wfh">WFH</span>'
         : '<span class="leave-badge annual">Annual</span>';
           return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
             <div class="avatar" style="background:${person?person.c.bg:'#eee'};color:${person?person.c.fg:'#666'};width:28px;height:28px;font-size:10px;flex-shrink:0">${person?initials(person.name):'?'}</div>
@@ -2475,7 +2540,7 @@ function renderMyWork() {
       else if(n.type==='task_approved'){icon='✅';msg=`<strong>${n.data.delivName}</strong> approved by ${n.data.pmName}`;color='var(--green)';}
       else if(n.type==='task_rejected'){icon='↩️';msg=`<strong>${n.data.delivName}</strong> needs revision`;color='var(--red)';}
       else if(n.type==='task_pending_pm'){icon='🔔';msg=`<strong>${n.data.assigneeName}</strong> submitted <strong>${n.data.delivName}</strong>`;color='var(--orange)';}
-      else if(n.type==='leave_request'){icon='🏖';const lt=n.data.leaveType==='sick'?'Sick Leave':'Annual Leave';msg=`<strong>${n.data.requesterName}</strong> requested ${lt} (${n.data.startDate} → ${n.data.endDate})`;color='var(--blue)';}
+      else if(n.type==='leave_request'){icon='🏖';const lt=n.data.leaveType==='sick'?'Sick Leave':n.data.leaveType==='business'?'Business Leave':n.data.leaveType==='wfh'?'Work From Home':'Annual Leave';msg=`<strong>${n.data.requesterName}</strong> requested ${lt} (${n.data.startDate} → ${n.data.endDate})`;color='var(--blue)';}
       else if(n.type==='tagged'){icon='💬';msg=`<strong>${n.data.fromName}:</strong> ${n.data.message}`;color='var(--blue)';}
       return `<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start">
         <div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">${icon}</div>
@@ -4754,6 +4819,8 @@ async function loadAndRenderLeaveRequests() {
       ? '<span class="leave-badge sick">Sick Leave</span>'
       : l.type === 'business'
         ? '<span class="leave-badge business">Business Leave</span>'
+        : l.type === 'wfh'
+        ? '<span class="leave-badge wfh">WFH</span>'
         : '<span class="leave-badge annual">Annual Leave</span>';
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
       <div class="avatar" style="background:${person?person.c.bg:'#eee'};color:${person?person.c.fg:'#666'};width:28px;height:28px;font-size:10px;flex-shrink:0">${person?initials(person.name):'?'}</div>
