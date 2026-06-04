@@ -4658,11 +4658,12 @@ function renderMyLeavesList() {
   const container = document.getElementById('myLeavesList');
   if(!container) return;
   const uid = isManager() ? null : currentUser.id; // managers see all pending; others see their own
-  const myLeaves = leaves.filter(l =>
-    (uid === null || String(l.personId) === String(uid)) &&
-    l.status !== 'rejected' &&
-    l.endDate >= new Date().toISOString().slice(0,10) // only future/ongoing
-  ).sort((a,b) => a.startDate < b.startDate ? -1 : 1);
+  const today = new Date().toISOString().slice(0,10);
+  const myLeaves = leaves.filter(l => {
+    if (String(l.personId) !== String(currentUser.id) && uid !== null) return false; // own leaves only for non-managers
+    if (uid === null) return l.status !== 'rejected' && l.endDate >= today; // managers: future only
+    return l.status !== 'rejected'; // own user: ALL leaves, past and future, so they can delete mistakes
+  }).sort((a,b) => a.startDate > b.startDate ? -1 : 1);
 
   if(!myLeaves.length) {
     container.innerHTML = '<div style="color:var(--muted);font-size:12px">No upcoming leaves.</div>';
