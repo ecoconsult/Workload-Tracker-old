@@ -4848,7 +4848,6 @@ async function approveLeave(leaveId) {
     const mgr = getManagerFor(l.personId);
     if (!isAdmin() && (!mgr || mgr.id !== currentUser.id)) { showToast('Only the direct manager can approve this leave'); return; }
   }
-  const l = leaves.find(x => x.id === leaveId);
   await sb.from('leaves').update({status:'approved', approved_by: currentUser.id}).eq('id', leaveId);
   if(l) await injectLeaveIntoTimesheets(l.personId, l.startDate, l.endDate, l.type, l.id);
   await loadLeaves();
