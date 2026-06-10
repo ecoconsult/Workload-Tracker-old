@@ -2433,7 +2433,13 @@ function renderMyWork() {
   let tasksHtml='';
   // Leave approvals for managers/admin — shown at top of My Work
   if(isManager() && !isTimesheetOnly()) {
-    const pendingLeaves = leaves.filter(l => l.status === 'pending');
+    // Only show leaves where this manager is the direct manager, or Ibrahim sees all
+    const pendingLeaves = leaves.filter(l => {
+      if (l.status !== 'pending') return false;
+      if (isAdmin()) return true; // Ibrahim sees everything
+      const mgr = getManagerFor(l.personId);
+      return mgr && mgr.id === currentUser.id;
+    });
     if(pendingLeaves.length) {
       tasksHtml += `<div style="margin-bottom:20px">
         <div style="font-size:11px;font-weight:700;color:var(--blue,#3b82f6);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px">🏖 Leave Requests (${pendingLeaves.length})</div>
@@ -4838,6 +4844,11 @@ async function loadAndRenderLeaveRequests() {
 
 async function approveLeave(leaveId) {
   const l = leaves.find(x => x.id === leaveId);
+  if (l) {
+    const mgr = getManagerFor(l.personId);
+    if (!isAdmin() && (!mgr || mgr.id !== currentUser.id)) { showToast('Only the direct manager can approve this leave'); return; }
+  }
+  const l = leaves.find(x => x.id === leaveId);
   await sb.from('leaves').update({status:'approved', approved_by: currentUser.id}).eq('id', leaveId);
   if(l) await injectLeaveIntoTimesheets(l.personId, l.startDate, l.endDate, l.type, l.id);
   await loadLeaves();
@@ -4852,6 +4863,11 @@ async function approveLeave(leaveId) {
 }
 
 async function rejectLeave(leaveId) {
+  const l = leaves.find(x => x.id === leaveId);
+  if (l) {
+    const mgr = getManagerFor(l.personId);
+    if (!isAdmin() && (!mgr || mgr.id !== currentUser.id)) { showToast('Only the direct manager can reject this leave'); return; }
+  }
   await sb.from('leaves').update({status:'rejected'}).eq('id', leaveId);
   await loadLeaves();
   loadAndRenderLeaveRequests();
