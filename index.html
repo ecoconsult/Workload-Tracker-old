@@ -4639,17 +4639,11 @@ function nbToggleLeaveHours() {
 
 function openLeaveModal() {
   if(isTimesheetOnly() || isHR()) { showToast('Leave requests are not available for this account'); return; }
-  // Populate person dropdown (self only unless manager)
+  // Everyone submits only for themselves — no dropdown needed
   const personSel = document.getElementById('leavePersonSel');
-  if(isManager()) {
-    personSel.innerHTML = team.filter(p=>p.role!=='timesheet_only').map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-    personSel.style.display = '';
-    document.getElementById('leavePersonLabel').style.display = '';
-  } else {
-    personSel.innerHTML = `<option value="${currentUser.id}">${currentUser.name}</option>`;
-    personSel.style.display = 'none';
-    document.getElementById('leavePersonLabel').style.display = 'none';
-  }
+  personSel.innerHTML = `<option value="${currentUser.id}">${currentUser.name}</option>`;
+  personSel.style.display = 'none';
+  document.getElementById('leavePersonLabel').style.display = 'none';
   document.getElementById('leaveStart').value = '';
   document.getElementById('leaveEnd').value = '';
   document.getElementById('leaveType').value = 'annual';
@@ -4663,13 +4657,13 @@ function openLeaveModal() {
 function renderMyLeavesList() {
   const container = document.getElementById('myLeavesList');
   if(!container) return;
-  const uid = isManager() ? null : currentUser.id; // managers see all pending; others see their own
+  const uid = currentUser.id; // always own leaves only
   const today = new Date().toISOString().slice(0,10);
-  const myLeaves = leaves.filter(l => {
-    if (String(l.personId) !== String(currentUser.id) && uid !== null) return false; // own leaves only for non-managers
-    if (uid === null) return l.status !== 'rejected' && l.endDate >= today; // managers: future only
-    return l.status !== 'rejected'; // own user: ALL leaves, past and future, so they can delete mistakes
-  }).sort((a,b) => a.startDate > b.startDate ? -1 : 1);
+  const myLeaves = leaves.filter(l =>
+    String(l.personId) === String(currentUser.id) && // only own leaves
+    l.status !== 'rejected' &&
+    l.endDate >= today // only current and future
+  ).sort((a,b) => a.startDate > b.startDate ? -1 : 1);
 
   if(!myLeaves.length) {
     container.innerHTML = '<div style="color:var(--muted);font-size:12px">No upcoming leaves.</div>';
