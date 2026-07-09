@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>E Team Workload Tracker</title>
+<title>Team Workload Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -29,6 +29,8 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 html { scrollbar-gutter: stable; }
 body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; overflow-y:scroll; }
+/* Warm beige tint over the whole app (emulates the eye-saver tone the app was designed under) */
+body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:999999; background:#FAF3E8; mix-blend-mode:multiply; }
 
 /* HEADER */
 .header {
@@ -395,6 +397,8 @@ select option{background:#fff}
 .nb-todo-list li{padding-left:20px;position:relative;margin:1px 0;line-height:1.8;cursor:text}
 .nb-todo-list li::before{content:'☐';position:absolute;left:0;top:0;font-size:13px;color:#888;line-height:1.8;width:18px;cursor:pointer;user-select:none}
 .nb-todo-list li.nb-done{text-decoration:line-through;color:var(--muted)}
+.nb-sticky-colors{display:flex;gap:4px;margin-top:8px;opacity:0;transition:opacity 0.15s}
+.nb-sticky:hover .nb-sticky-colors{opacity:1}
 .nb-todo-list li.nb-done::before{content:'☑';color:#2d8f5e}
 .nb-note-content th{background:var(--surface2);font-weight:600}
 .nb-note:hover .nb-note-bar{opacity:1!important}
@@ -575,7 +579,7 @@ select option{background:#fff}
   <div class="summary-row">
     <div class="card"><div class="card-label">Team Availability</div><div class="card-value val-green" id="s-avail">—</div><div class="card-sub">avg free capacity this week</div></div>
     <div class="card"><div class="card-label">Available</div><div class="card-value val-green" id="s-green">—</div><div class="card-sub">people below 60% load</div></div>
-    <div class="card"><div class="card-label">Busy</div><div class="card-value val-yellow" id="s-yellow">—</div><div class="card-sub">people at 60–84% load</div></div>
+    <div class="card"><div class="card-label">Busy</div><div class="card-value val-yellow" id="s-yellow">—</div><div class="card-sub">people at 60–99% load</div></div>
     <div class="card"><div class="card-label">Overloaded</div><div class="card-value val-red" id="s-red">—</div><div class="card-sub">people at 100%+</div></div>
   </div>
 
@@ -1231,10 +1235,10 @@ function fmtMonthYear(d) { return `${MONTHS_LONG[d.getMonth()]} ${d.getFullYear(
 function fmtMonthYearShort(d) { return `${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`; }
 function isToday(d) { const t=new Date(); return d.getDate()===t.getDate()&&d.getMonth()===t.getMonth()&&d.getFullYear()===t.getFullYear(); }
 function initials(n) { return n.split(' ').map(x=>x[0]).join('').toUpperCase(); }
-function loadColor(l) { return l<60?'var(--green)':l<85?'var(--yellow)':l<100?'var(--orange)':l===100?'var(--red)':'#8b0000'; }
-function loadBg(l)    { return l<60?'#b8dfc9':l<85?'#f9d97a':l<100?'#fed7aa':'#f5a9a3'; }
-function chipClass(l) { return l<60?'chip-green':l<85?'chip-yellow':l<100?'chip-orange':l===100?'chip-red':'chip-overloaded'; }
-function chipLabel(l) { return l<60?'Available':l<85?'Busy':l<100?'Very Busy':l===100?'Full Capacity':'Overloaded'; }
+function loadColor(l) { return l<60?'var(--green)':l<85?'var(--yellow)':l<95?'var(--orange)':l<100?'var(--red)':'#8b0000'; }
+function loadBg(l)    { return l<60?'#b8dfc9':l<85?'#f9d97a':l<95?'#fed7aa':l<100?'#f5a9a3':'#e79a9a'; }
+function chipClass(l) { return l<60?'chip-green':l<85?'chip-yellow':l<95?'chip-orange':l<100?'chip-red':'chip-overloaded'; }
+function chipLabel(l) { return l<60?'Available':l<85?'Busy':l<95?'Very Busy':l<100?'Full Capacity':'Overloaded'; }
 function getWeekDays(ws) { return Array.from({length:7},(_,i)=>{const d=new Date(ws);d.setDate(d.getDate()+i);return d;}); }
 function dateInRange(d, start, end) {
   const t=new Date(typeof d==='string'?d+'T12:00:00':d).getTime();
@@ -2436,7 +2440,7 @@ function renderMyWork() {
     // Only show leaves where this manager is the direct manager, or Ibrahim sees all
     const pendingLeaves = leaves.filter(l => {
       if (l.status !== 'pending') return false;
-      if (isAdmin()) return true; // Ibrahim sees everything
+      // Everyone (including Ibrahim) only sees requests from their direct reports
       const mgr = getManagerFor(l.personId);
       return mgr && mgr.id === currentUser.id;
     });
@@ -3629,14 +3633,29 @@ function nbSyncFontSel() {
 }
 function nbFontSize(size) {
   if (!size) return;
-  if (lastFocusedNote) lastFocusedNote.focus();
   const sel=window.getSelection();
+  // Resolve the contenteditable that actually contains the selection (note card OR sticky)
+  let host=null;
+  if (sel&&sel.rangeCount) {
+    let n=sel.focusNode; if(n&&n.nodeType===3) n=n.parentElement;
+    if (n&&n.closest) host=n.closest('[contenteditable="true"]');
+  }
+  if (!host&&lastFocusedNote) { lastFocusedNote.focus(); host=lastFocusedNote; }
   if (sel&&sel.rangeCount>0&&!sel.isCollapsed) {
     document.execCommand('fontSize',false,'7');
-    lastFocusedNote&&lastFocusedNote.querySelectorAll('font[size="7"]').forEach(f=>{
+    (host||document).querySelectorAll('font[size="7"]').forEach(f=>{
       const span=document.createElement('span'); span.style.fontSize=size+'px'; span.innerHTML=f.innerHTML; f.replaceWith(span);
     });
-  } else if (lastFocusedNote) { lastFocusedNote.style.fontSize=size+'px'; }
+    if (host&&host.oninput) host.dispatchEvent(new Event('input'));
+  } else if (host) {
+    if (host.closest&&host.closest('.nb-sticky')) {
+      // Stickies re-render from saved HTML, so the size must live inside the content
+      host.innerHTML='<span style="font-size:'+size+'px">'+host.innerHTML+'</span>';
+      host.dispatchEvent(new Event('input'));
+    } else {
+      host.style.fontSize=size+'px';
+    }
+  }
   const ss=document.getElementById('nbFontSizeSel'); if(ss) ss.value=size;
 }
 
@@ -3751,16 +3770,68 @@ function placeCursorStart(el){try{const r=document.createRange(),s=window.getSel
 /* ── Stickies ─────────────────────────────────────────────────── */
 function renderStickies(s) {
   const el=document.getElementById('nbStickies'); if(!el) return;
+  const COLORS=['#FFF9C4','#C8F7C5','#C5E8F7','#FFC5C5','#E8DAFF','#FFE0B2'];
   el.innerHTML=(s.stickies||[]).map(st=>`
-    <div style="background:${st.color};border:1px solid rgba(0,0,0,0.1);border-radius:10px;padding:10px 14px;min-width:150px;max-width:200px;position:relative;box-shadow:2px 3px 8px rgba(0,0,0,0.08);flex-shrink:0">
+    <div class="nb-sticky" style="background:${st.color};border:1px solid rgba(0,0,0,0.1);border-radius:10px;padding:10px 14px;min-width:150px;max-width:220px;position:relative;box-shadow:2px 3px 8px rgba(0,0,0,0.08);flex-shrink:0">
       <button onclick="removeSticky('${s.id}','${st.id}')" style="position:absolute;top:4px;right:6px;background:none;border:none;cursor:pointer;font-size:13px;color:rgba(0,0,0,0.3)">×</button>
-      <div contenteditable="true" style="font-size:14px;line-height:1.6;outline:none;min-height:40px;padding-right:12px;color:#333" onblur="saveStickyText('${s.id}','${st.id}',this.innerText)">${st.text||''}</div>
+      <div class="nb-note-content nb-sticky-content" contenteditable="true" data-placeholder="Write…"
+        data-section="${s.id}" data-sticky="${st.id}"
+        style="font-size:14px;line-height:1.8;outline:none;min-height:40px;padding-right:12px;color:#333;word-break:break-word;overflow-wrap:break-word;user-select:text;-webkit-user-select:text">${st.text||''}</div>
+      <div class="nb-sticky-colors">${COLORS.map(c=>`<span onclick="setStickyColor('${s.id}','${st.id}','${c}')" title="Change colour" style="width:14px;height:14px;border-radius:50%;background:${c};border:1.5px solid rgba(0,0,0,${c===st.color?'0.45':'0.12'});cursor:pointer;flex-shrink:0"></span>`).join('')}</div>
     </div>`).join('')+
     `<button onclick="addSticky('${s.id}')" style="align-self:center;background:none;border:1px dashed var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted);white-space:nowrap;flex-shrink:0" onmouseenter="this.style.borderColor='var(--green)'" onmouseleave="this.style.borderColor='var(--border)'">📌 Add sticky</button>`;
+  // Attach the exact same editor behaviors the note cards get
+  el.querySelectorAll('.nb-sticky-content').forEach(content=>{
+    const save=()=>saveStickyText(content.dataset.section, content.dataset.sticky, content.innerHTML);
+    const debSave=()=>{ clearTimeout(stickySaveTimer); stickySaveTimer=setTimeout(save,600); };
+
+    /* Todo toggle ── same as notes */
+    content.addEventListener('mousedown', function(e) {
+      e.stopPropagation();
+      const li = e.target.closest && e.target.closest('.nb-todo-list li');
+      if (li && e.clientX - li.getBoundingClientRect().left < 26) {
+        e.preventDefault(); li.classList.toggle('nb-done'); debSave();
+      }
+    });
+
+    /* Keyboard ── same as notes: Tab indent/outdent, "1." + space → numbered list */
+    content.addEventListener('keydown', function(e) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        document.execCommand(e.shiftKey ? 'outdent' : 'indent');
+        debSave();
+        return;
+      }
+      if (e.key === ' ') {
+        const sel=window.getSelection();
+        if (sel&&sel.rangeCount) {
+          const node=sel.getRangeAt(0).startContainer;
+          if (node.nodeType===3&&!node.parentElement.closest('li')) {
+            const before=node.textContent.slice(0,sel.getRangeAt(0).startOffset);
+            if (/^\d+\.$/.test(before.trim())) {
+              e.preventDefault();
+              node.textContent=node.textContent.slice(sel.getRangeAt(0).startOffset);
+              document.execCommand('insertOrderedList');
+              debSave();
+              return;
+            }
+          }
+        }
+      }
+    });
+
+    content.addEventListener('input',   debSave);
+    content.addEventListener('blur',    save);
+    content.addEventListener('focus',   ()=>{ lastFocusedNote=content; nbSyncFontSel(); nbSaveLastRange(); });
+    content.addEventListener('keyup',   ()=>{ nbSyncFontSel(); nbSaveLastRange(); });
+    content.addEventListener('mouseup', ()=>{ nbSyncFontSel(); nbSaveLastRange(); });
+  });
 }
-function addSticky(sectionId){const sections=loadNotes();const s=sections.find(x=>x.id===sectionId);if(!s)return;if(!s.stickies)s.stickies=[];s.stickies.push({id:'st'+Date.now(),text:'',color:['#FFF9C4','#C8F7C5','#C5E8F7','#FFC5C5'][s.stickies.length%4]});saveNotes(sections);renderStickies(s);}
+function addSticky(sectionId){const sections=loadNotes();const s=sections.find(x=>x.id===sectionId);if(!s)return;if(!s.stickies)s.stickies=[];s.stickies.push({id:'st'+Date.now(),text:'',color:'#FFF9C4'});saveNotes(sections);renderStickies(s);}
 function removeSticky(sectionId,stickyId){const sections=loadNotes();const s=sections.find(x=>x.id===sectionId);if(!s)return;s.stickies=(s.stickies||[]).filter(x=>x.id!==stickyId);saveNotes(sections);renderStickies(s);}
-function saveStickyText(sectionId,stickyId,text){const sections=loadNotes();const s=sections.find(x=>x.id===sectionId);if(!s)return;const st=(s.stickies||[]).find(x=>x.id===stickyId);if(!st)return;st.text=text;saveNotes(sections);}
+function saveStickyText(sectionId,stickyId,html){const sections=loadNotes();const s=sections.find(x=>x.id===sectionId);if(!s)return;const st=(s.stickies||[]).find(x=>x.id===stickyId);if(!st)return;st.text=html;saveNotes(sections);}
+let stickySaveTimer=null;
+function setStickyColor(sectionId,stickyId,color){const sections=loadNotes();const s=sections.find(x=>x.id===sectionId);if(!s)return;const st=(s.stickies||[]).find(x=>x.id===stickyId);if(!st)return;st.color=color;saveNotes(sections);renderStickies(s);}
 
 /* ── Stubs ────────────────────────────────────────────────────── */
 function selectNoteType(){}
@@ -4807,7 +4878,12 @@ async function injectLeaveIntoTimesheets(personId, startDate, endDate, type, lea
 
 async function loadAndRenderLeaveRequests() {
   await loadLeaves();
-  const pending = leaves.filter(l => l.status === 'pending');
+  // Only show requests from the current user's direct reports
+  const pending = leaves.filter(l => {
+    if (l.status !== 'pending') return false;
+    const mgr = getManagerFor(l.personId);
+    return mgr && mgr.id === currentUser.id;
+  });
   const container = document.getElementById('leavePendingList');
   if(!container) return;
   if(!pending.length) {
@@ -5386,7 +5462,7 @@ function renderAll() { renderWeekly(); renderMonthly(); renderProjects(); update
 
 // ── INIT ─────────────────────────────────────────────────────────
 window.addEventListener('load', async function() {
-  console.log('ECO Workload Tracker — build 2026-05-10-v4 loaded');
+  console.log('ECO Workload Tracker — build 2026-05-06-v3 loaded');
   document.querySelectorAll('.overlay').forEach(function(o) {
     o.addEventListener('click', function(e){ if(e.target===o) o.classList.remove('open'); });
   });
